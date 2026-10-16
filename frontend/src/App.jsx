@@ -40,12 +40,14 @@ function App() {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState({ column: null, direction: 'asc' });
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
     setPreview(null);
     setError('');
     setSearch('');
+    setSort({ column: null, direction: 'asc' });
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -75,6 +77,24 @@ function App() {
   const filteredData = preview?.data.filter((values) =>
     values.some((value) => value.toLowerCase().includes(search.trim().toLowerCase())),
   ) ?? [];
+  const sortedData = sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
+    const leftValue = (left[sort.column] ?? '').trim();
+    const rightValue = (right[sort.column] ?? '').trim();
+    const leftNumber = Number(leftValue);
+    const rightNumber = Number(rightValue);
+    const bothNumeric = leftValue !== '' && rightValue !== '' && Number.isFinite(leftNumber) && Number.isFinite(rightNumber);
+    const comparison = bothNumeric
+      ? leftNumber - rightNumber
+      : leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' });
+    return sort.direction === 'asc' ? comparison : -comparison;
+  });
+
+  function handleSort(column) {
+    setSort((current) => ({
+      column,
+      direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  }
 
   return (
     <main className="app-shell">
@@ -121,10 +141,14 @@ function App() {
             </label>
             <div className="table-scroll">
               <table>
-                <thead><tr>{preview.headers.map((header, index) => <th key={`${header}-${index}`}>{header}</th>)}</tr></thead>
-                <tbody>{filteredData.slice(0, 5).map((values, rowIndex) => (
+                <thead><tr>{preview.headers.map((header, index) => <th key={`${header}-${index}`}>
+                  <button className="sort-button" type="button" onClick={() => handleSort(index)} aria-label={`Sort by ${header}${sort.column === index ? `, ${sort.direction}ending` : ''}`}>
+                    {header}<span aria-hidden="true">{sort.column === index ? (sort.direction === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>
+                  </button>
+                </th>)}</tr></thead>
+                <tbody>{sortedData.slice(0, 5).map((values, rowIndex) => (
                   <tr key={rowIndex}>{preview.headers.map((_, columnIndex) => <td key={columnIndex}>{values[columnIndex] || '—'}</td>)}</tr>
-                ))}{filteredData.length === 0 && <tr><td colSpan={preview.headers.length} className="empty-results">No rows match your search.</td></tr>}</tbody>
+                ))}{sortedData.length === 0 && <tr><td colSpan={preview.headers.length} className="empty-results">No rows match your search.</td></tr>}</tbody>
               </table>
             </div>
           </div>
