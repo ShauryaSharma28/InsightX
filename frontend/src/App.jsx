@@ -39,11 +39,13 @@ function parseCsv(text) {
 function App() {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
     setPreview(null);
     setError('');
+    setSearch('');
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -69,6 +71,10 @@ function App() {
       setError('The file could not be read. Try choosing it again.');
     }
   }
+
+  const filteredData = preview?.data.filter((values) =>
+    values.some((value) => value.toLowerCase().includes(search.trim().toLowerCase())),
+  ) ?? [];
 
   return (
     <main className="app-shell">
@@ -100,15 +106,25 @@ function App() {
         {preview && (
           <div className="preview" aria-live="polite">
             <div className="preview-heading">
-              <div><h3>{preview.fileName}</h3><p>Showing the first {Math.min(5, preview.rowCount)} rows</p></div>
+              <div><h3>{preview.fileName}</h3><p>{search ? `${filteredData.length} matching rows` : `Showing the first ${Math.min(5, preview.rowCount)} rows`}</p></div>
               <div className="dataset-stats"><span><strong>{preview.rowCount}</strong> rows</span><span><strong>{preview.headers.length}</strong> columns</span></div>
             </div>
+            <label className="search-control">
+              <span aria-hidden="true">⌕</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search all columns"
+                aria-label="Search all columns"
+              />
+            </label>
             <div className="table-scroll">
               <table>
                 <thead><tr>{preview.headers.map((header, index) => <th key={`${header}-${index}`}>{header}</th>)}</tr></thead>
-                <tbody>{preview.data.slice(0, 5).map((values, rowIndex) => (
+                <tbody>{filteredData.slice(0, 5).map((values, rowIndex) => (
                   <tr key={rowIndex}>{preview.headers.map((_, columnIndex) => <td key={columnIndex}>{values[columnIndex] || '—'}</td>)}</tr>
-                ))}</tbody>
+                ))}{filteredData.length === 0 && <tr><td colSpan={preview.headers.length} className="empty-results">No rows match your search.</td></tr>}</tbody>
               </table>
             </div>
           </div>

@@ -23,6 +23,12 @@
 .preview { margin-top: 30px; }
 .preview-heading { align-items: flex-start; margin-bottom: 16px; }
 .preview-heading h3 { margin: 0 0 4px; overflow-wrap: anywhere; color: #303044; font-size: 15px; }
+.search-control { display: flex; align-items: center; gap: 9px; max-width: 360px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid #e7e7ef; border-radius: 9px; color: #858697; }
+.search-control:focus-within { border-color: #8a82e1; box-shadow: 0 0 0 3px rgb(106 97 216 / 12%); }
+.search-control span { font-size: 19px; line-height: 1; }
+.search-control input { width: 100%; border: 0; outline: 0; background: transparent; color: #303044; font: inherit; font-size: 13px; }
+.search-control input::placeholder { color: #999aaa; }
+.empty-results { padding: 20px; color: #858697; text-align: center; }
 .dataset-stats { display: flex; gap: 16px; color: #858697; font-size: 12px; white-space: nowrap; }
 .dataset-stats strong { color: #4d4b6b; }
 .table-scroll { overflow-x: auto; border: 1px solid #ececf2; border-radius: 10px; }
