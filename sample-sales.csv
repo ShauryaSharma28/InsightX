@@ -1,0 +1,13 @@
+Date,Product,Region,Units,Revenue,Status
+2026-01-04,Notebook,North,18,270.00,Complete
+2026-01-08,Desk Lamp,West,7,315.00,Complete
+2026-01-12,Water Bottle,South,24,360.00,Pending
+2026-01-15,Notebook,East,32,480.00,Complete
+2026-01-19,Wireless Mouse,North,11,550.00,Shipped
+2026-01-23,Desk Lamp,South,5,225.00,Pending
+2026-01-27,Water Bottle,West,16,240.00,Complete
+2026-02-02,Wireless Mouse,East,9,450.00,Shipped
+2026-02-06,Notebook,South,21,315.00,Complete
+2026-02-10,Desk Lamp,North,13,585.00,Shipped
+2026-02-14,Water Bottle,East,28,420.00,Pending
+2026-02-18,Wireless Mouse,West,6,300.00,Complete
