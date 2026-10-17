@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import sampleCsv from '../../sample-sales.csv?raw';
 import './App.css';
-
-const sampleCsvUrl = `${import.meta.env.BASE_URL}sample-sales.csv`;
 
 function parseCsv(text) {
   const rows = [];
@@ -78,12 +77,10 @@ function App() {
     setFilterValue('');
   }
 
-  async function loadSampleDataset() {
+  function loadSampleDataset() {
     setError('');
     try {
-      const response = await fetch(sampleCsvUrl);
-      if (!response.ok) throw new Error('Sample file unavailable');
-      const rows = parseCsv(await response.text());
+      const rows = parseCsv(sampleCsv);
       if (rows.length < 2) throw new Error('Sample file is empty');
       setSearch('');
       setSort({ column: null, direction: 'asc' });
@@ -256,6 +253,15 @@ function App() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadSampleCsv() {
+    const url = URL.createObjectURL(new Blob([sampleCsv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'sample-sales.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -298,7 +304,7 @@ function App() {
           <input id="csv-file" type="file" accept=".csv,text/csv" onChange={handleFileChange} />
         </label>
         <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded.</div>
-        <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 50-row sample <span>↗</span></button><a className="sample-download" href={sampleCsvUrl} download>Download sample CSV ↓</a></div>
+        <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 62-row sample <span>↗</span></button><button className="sample-download" type="button" onClick={downloadSampleCsv}>Download sample CSV ↓</button></div>
 
         {error && <p className="error-message" role="alert">{error}</p>}
 

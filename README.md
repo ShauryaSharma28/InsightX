@@ -6,7 +6,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV datasets.
 
 ## Features
 
-- Open a CSV from your device or explore the included 50-row sales sample. The sample includes missing values and duplicate records for trying the data quality tools.
+- Open a CSV from your device or explore the 62-row sales sample in the repository root. It includes multiple products, regions, and statuses, plus missing values and duplicate records for trying the data quality tools.
 - Keep data on your device while you search, sort, filter, and paginate rows.
 - Choose visible columns and export the current view as a cleaned CSV.
 - Review missing cells, duplicate rows, and per-column data quality.
@@ -17,7 +17,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV datasets.
 
 - `frontend/` — React application powered by Vite
 - `backend/` — Django project and REST Framework configuration
-- `frontend/public/sample-sales.csv` — sample dataset for trying the workspace
+- `sample-sales.csv` — sample dataset shown on the GitHub repository home and used by the website
 
 ## Run the project locally
 

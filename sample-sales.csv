@@ -11,3 +11,53 @@ Date,Product,Region,Units,Revenue,Status
 2026-02-10,Desk Lamp,North,13,585.00,Shipped
 2026-02-14,Water Bottle,East,28,420.00,Pending
 2026-02-18,Wireless Mouse,West,6,300.00,Complete
+2026-02-21,Notebook,North,5,75.00,Complete
+2026-02-22,Headphones,South,12,780.00,Complete
+2026-02-23,Keyboard,East,19,760.00,Shipped
+2026-02-24,Wireless Mouse,North,27,1350.00,Returned
+2026-02-25,Wireless Mouse,South,34,1700.00,Pending
+2026-02-26,Water Bottle,East,10,150.00,Shipped
+2026-02-27,Desk Lamp,North,18,810.00,Returned
+2026-02-28,Notebook,South,25,375.00,Pending
+2026-03-01,Notebook,East,32,480.00,Complete
+2026-03-02,Headphones,North,9,585.00,Complete
+2026-03-03,Keyboard,South,16,640.00,Pending
+2026-03-04,Wireless Mouse,East,23,1150.00,Complete
+2026-03-05,Wireless Mouse,North,31,1550.00,
+2026-03-06,Water Bottle,South,7,105.00,Shipped
+2026-03-07,Desk Lamp,East,14,630.00,Returned
+2026-03-08,Notebook,North,22,330.00,Complete
+2026-03-09,Notebook,South,29,435.00,Shipped
+2026-03-10,Headphones,East,,,Returned
+2026-03-11,Keyboard,North,13,520.00,Pending
+2026-03-12,Wireless Mouse,South,20,1000.00,Complete
+2026-03-13,Wireless Mouse,East,27,1350.00,Returned
+2026-03-14,Water Bottle,North,35,525.00,Pending
+2026-03-15,Desk Lamp,South,11,495.00,Complete
+2026-03-16,Notebook,East,18,270.00,Complete
+2026-03-17,Notebook,North,26,390.00,Shipped
+2026-03-18,Headphones,South,33,2145.00,Complete
+2026-03-19,Keyboard,East,9,360.00,Complete
+2026-03-20,Wireless Mouse,North,17,850.00,Shipped
+2026-03-21,Wireless Mouse,South,24,1200.00,Returned
+2026-03-22,Water Bottle,East,31,465.00,Pending
+2026-03-23,Desk Lamp,North,8,360.00,Shipped
+2026-03-24,Notebook,South,15,225.00,Returned
+2026-03-25,Notebook,East,22,330.00,Pending
+2026-03-26,Headphones,North,30,1950.00,Complete
+2026-03-27,Keyboard,South,6,240.00,Complete
+2026-03-28,Wireless Mouse,East,13,650.00,Pending
+2026-03-29,Wireless Mouse,North,21,1050.00,Complete
+2026-03-30,Water Bottle,South,28,420.00,Complete
+2026-03-31,Desk Lamp,East,35,,Shipped
+2026-04-01,Notebook,North,12,180.00,Returned
+2026-04-02,Notebook,South,19,285.00,Complete
+2026-04-03,Headphones,East,26,1690.00,Shipped
+2026-04-04,Keyboard,North,34,1360.00,Returned
+2026-04-05,Wireless Mouse,South,10,500.00,Pending
+2026-04-06,Wireless Mouse,East,17,850.00,
+2026-04-07,Water Bottle,North,25,375.00,Returned
+2026-04-08,Desk Lamp,South,32,1440.00,Pending
+2026-04-09,Notebook,East,8,120.00,Complete
+2026-01-23,Desk Lamp,South,5,225.00,Pending
+2026-03-12,Wireless Mouse,South,20,1000.00,Complete
