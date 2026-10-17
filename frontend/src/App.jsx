@@ -54,12 +54,19 @@ function App() {
   const [chartColumn, setChartColumn] = useState(null);
   const [hideEmpty, setHideEmpty] = useState(false);
   const [removeDuplicates, setRemoveDuplicates] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState([]);
+  const [filterColumn, setFilterColumn] = useState('');
+  const [filterOperator, setFilterOperator] = useState('contains');
+  const [filterValue, setFilterValue] = useState('');
 
   function setDataset(fileName, rows) {
     const headers = rows[0].map((header, index) => header.trim() || `Column ${index + 1}`);
     setPreview({ fileName, headers, data: rows.slice(1), rowCount: rows.length - 1 });
+    setVisibleColumns(headers.map((_, index) => index));
     setChartColumn(null);
     setPage(0);
+    setFilterColumn('');
+    setFilterValue('');
   }
 
   async function loadFile(file) {
@@ -101,7 +108,17 @@ function App() {
   const searchTerm = search.trim().toLowerCase();
   const filteredData = preview?.data.filter((values) =>
     values.some((value) => (value ?? '').toLowerCase().includes(searchTerm)) &&
-    (!hideEmpty || values.every((value) => (value ?? '').trim() !== '')),
+    (!hideEmpty || values.every((value) => (value ?? '').trim() !== '')) &&
+    (filterColumn === '' || filterValue.trim() === '' || (() => {
+      const cell = (values[Number(filterColumn)] ?? '').trim();
+      const target = filterValue.trim();
+      if (filterOperator === 'contains') return cell.toLowerCase().includes(target.toLowerCase());
+      if (filterOperator === 'equals') return cell.toLowerCase() === target.toLowerCase();
+      const number = Number(cell);
+      const comparison = Number(target);
+      if (!Number.isFinite(number) || !Number.isFinite(comparison)) return false;
+      return filterOperator === 'greater' ? number > comparison : number < comparison;
+    })()),
   ) ?? [];
   const sortedData = sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
@@ -124,6 +141,7 @@ function App() {
   const exportRows = removeDuplicates && preview
     ? [...new Map(sortedData.map((values) => [preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000'), values])).values()]
     : sortedData;
+  const selectedColumns = preview?.headers.map((_, index) => index).filter((index) => visibleColumns.includes(index)) ?? [];
   const numericColumns = preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
     const values = preview.data.map((row) => Number((row[index] ?? '').trim())).filter(Number.isFinite);
     return values.length > 0 && values.length >= preview.data.filter((row) => (row[index] ?? '').trim()).length * 0.7;
@@ -153,7 +171,7 @@ function App() {
 
   function downloadCsv() {
     if (!preview) return;
-    const content = [preview.headers, ...exportRows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const content = [[...selectedColumns.map((index) => preview.headers[index])], ...exportRows.map((row) => selectedColumns.map((index) => row[index] ?? ''))].map((row) => row.map(csvCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -249,18 +267,24 @@ function App() {
                 {search && <span className="result-count">{filteredData.length} found</span>}
               </label>
             </div>
-            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setPage(0); }}>Reset view</button></div>
+            <div className="filter-toolbar">
+              <label>Filter column<select value={filterColumn} onChange={(event) => { setFilterColumn(event.target.value); setPage(0); }}><option value="">All columns</option>{preview.headers.map((header, index) => <option value={index} key={index}>{header}</option>)}</select></label>
+              <label>Condition<select value={filterOperator} onChange={(event) => setFilterOperator(event.target.value)}><option value="contains">contains</option><option value="equals">equals</option><option value="greater">greater than</option><option value="less">less than</option></select></label>
+              <label className="filter-value">Value<input value={filterValue} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder="Type a value" /></label>
+              <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
+            </div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div>
 
             <div className="table-scroll">
               <table>
-                <thead><tr>{preview.headers.map((header, index) => <th key={`${header}-${index}`}>
+                <thead><tr>{selectedColumns.map((index) => { const header = preview.headers[index]; return <th key={`${header}-${index}`}>
                   <button className="sort-button" type="button" onClick={() => handleSort(index)} aria-label={`Sort by ${header}${sort.column === index ? `, ${sort.direction}ending` : ''}`}>
                     {header}<span aria-hidden="true">{sort.column === index ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
                   </button>
-                </th>)}</tr></thead>
+                </th>; })}</tr></thead>
                 <tbody>{visibleData.map((values, rowIndex) => (
-                  <tr key={page * pageSize + rowIndex}>{preview.headers.map((_, columnIndex) => <td key={columnIndex}>{values[columnIndex]?.trim() || <span className="empty-cell">Empty</span>}</td>)}</tr>
-                ))}{sortedData.length === 0 && <tr><td colSpan={preview.headers.length} className="empty-results">No rows match your search. Try another term.</td></tr>}</tbody>
+                  <tr key={page * pageSize + rowIndex}>{selectedColumns.map((columnIndex) => <td key={columnIndex}>{values[columnIndex]?.trim() || <span className="empty-cell">Empty</span>}</td>)}</tr>
+                ))}{sortedData.length === 0 && <tr><td colSpan={Math.max(1, selectedColumns.length)} className="empty-results">No rows match your filters. Try changing the search or filter.</td></tr>}</tbody>
               </table>
             </div>
             <div className="table-footnote">Showing {visibleData.length} of {sortedData.length.toLocaleString()} matching records <span>·</span> Select a column heading to sort<div className="pagination"><button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous</button><span>Page {page + 1} of {pageCount}</span><button type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next →</button></div></div>
