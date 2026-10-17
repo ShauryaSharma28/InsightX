@@ -6,7 +6,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV datasets.
 
 ## Features
 
-- Open a CSV from your device or explore the included sales sample.
+- Open a CSV from your device or explore the included 50-row sales sample. The sample includes missing values and duplicate records for trying the data quality tools.
 - Keep data on your device while you search, sort, filter, and paginate rows.
 - Choose visible columns and export the current view as a cleaned CSV.
 - Review missing cells, duplicate rows, and per-column data quality.

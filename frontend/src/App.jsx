@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import './App.css';
 
-const sampleCsv = `Month,Region,Revenue,Orders,Customer satisfaction\nJanuary,North,18400,142,4.3\nJanuary,South,12600,98,4.1\nFebruary,North,22100,167,4.6\nFebruary,South,15800,121,4.2\nMarch,North,19800,153,4.4\nMarch,South,18400,139,4.5\nApril,North,26700,201,4.7\nApril,South,21300,166,4.6\nMay,North,24900,188,4.5\nMay,South,23100,179,4.7\nJune,North,31200,234,4.8\nJune,South,25800,196,4.6`;
+const sampleCsvUrl = `${import.meta.env.BASE_URL}sample-sales.csv`;
 
 function parseCsv(text) {
   const rows = [];
@@ -76,6 +76,21 @@ function App() {
     setPage(0);
     setFilterColumn('');
     setFilterValue('');
+  }
+
+  async function loadSampleDataset() {
+    setError('');
+    try {
+      const response = await fetch(sampleCsvUrl);
+      if (!response.ok) throw new Error('Sample file unavailable');
+      const rows = parseCsv(await response.text());
+      if (rows.length < 2) throw new Error('Sample file is empty');
+      setSearch('');
+      setSort({ column: null, direction: 'asc' });
+      setDataset('sample-sales.csv', rows);
+    } catch {
+      setError('The sample dataset could not be loaded. Try downloading the CSV instead.');
+    }
   }
 
   async function loadFile(file) {
@@ -283,7 +298,7 @@ function App() {
           <input id="csv-file" type="file" accept=".csv,text/csv" onChange={handleFileChange} />
         </label>
         <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded.</div>
-        <div className="sample-actions"><button className="sample-button" type="button" onClick={() => { setError(''); setSearch(''); setDataset('sales-sample.csv', parseCsv(sampleCsv)); }}>Explore a sample dataset <span>↗</span></button><a className="sample-download" href="/InsightX/sample-sales.csv" download>Download sample CSV ↓</a></div>
+        <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 50-row sample <span>↗</span></button><a className="sample-download" href={sampleCsvUrl} download>Download sample CSV ↓</a></div>
 
         {error && <p className="error-message" role="alert">{error}</p>}
 
