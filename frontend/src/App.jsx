@@ -190,7 +190,22 @@ function App() {
     const filled = values.filter(Boolean);
     const nums = filled.map(Number).filter(Number.isFinite);
     const distinct = new Set(filled).size;
-    return { header, filled: filled.length, missing: values.length - filled.length, distinct, type: nums.length === filled.length && filled.length ? 'Number' : 'Text', average: nums.length === filled.length && nums.length ? nums.reduce((sum, value) => sum + value, 0) / nums.length : null };
+    const isNumeric = nums.length === filled.length && filled.length > 0;
+    const numericStats = isNumeric ? nums.reduce((stats, value) => ({
+      min: Math.min(stats.min, value),
+      max: Math.max(stats.max, value),
+      sum: stats.sum + value,
+    }), { min: Infinity, max: -Infinity, sum: 0 }) : null;
+    return {
+      header,
+      filled: filled.length,
+      missing: values.length - filled.length,
+      distinct,
+      type: isNumeric ? 'Number' : 'Text',
+      min: numericStats?.min ?? null,
+      max: numericStats?.max ?? null,
+      average: numericStats ? numericStats.sum / nums.length : null,
+    };
   }) ?? [];
 
   function handleSort(column) {
@@ -207,6 +222,21 @@ function App() {
     const link = document.createElement('a');
     link.href = url;
     link.download = `${preview.fileName.replace(/\.csv$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadColumnReport() {
+    if (!preview) return;
+    const report = [
+      ['Column', 'Type', 'Filled', 'Missing', 'Distinct values', 'Minimum', 'Maximum', 'Average'],
+      ...columnProfiles.map((column) => [column.header, column.type, column.filled, column.missing, column.distinct, column.min ?? '', column.max ?? '', column.average ?? '']),
+    ];
+    const content = report.map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${preview.fileName.replace(/\.csv$/i, '')}-column-report.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -284,7 +314,7 @@ function App() {
               </section>
             </div>
 
-            <section className="column-section"><div className="analysis-heading"><div><span className="section-kicker">COLUMN PROFILE</span><h3>Know what each field contains</h3></div></div><div className="profile-grid">{columnProfiles.map((column) => <article className="profile-card" key={column.header}><div className="profile-title"><strong>{column.header}</strong><span>{column.type}</span></div><div className="profile-stats"><span><b>{column.filled.toLocaleString()}</b> filled</span><span><b>{column.distinct.toLocaleString()}</b> unique</span><span><b>{column.missing.toLocaleString()}</b> empty</span>{column.average !== null && <span><b>{column.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> average</span>}</div><div className="profile-meter"><i style={{ width: `${preview.rowCount ? (column.filled / preview.rowCount) * 100 : 0}%` }} /></div></article>)}</div></section>
+            <section className="column-section"><div className="analysis-heading"><div><span className="section-kicker">COLUMN PROFILE</span><h3>Know what each field contains</h3></div><button className="report-button" type="button" onClick={downloadColumnReport}>↓ Download report</button></div><div className="profile-grid">{columnProfiles.map((column) => <article className="profile-card" key={column.header}><div className="profile-title"><strong>{column.header}</strong><span>{column.type}</span></div><div className="profile-stats"><span><b>{column.filled.toLocaleString()}</b> filled</span><span><b>{column.distinct.toLocaleString()}</b> unique</span><span><b>{column.missing.toLocaleString()}</b> empty</span>{column.average !== null && <><span><b>{column.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> min</span><span><b>{column.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> max</span><span><b>{column.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> average</span></>}</div><div className="profile-meter"><i style={{ width: `${preview.rowCount ? (column.filled / preview.rowCount) * 100 : 0}%` }} /></div></article>)}</div></section>
 
             <div className="insight-grid" aria-label="Dataset quality summary">
               <article className="insight-card"><span className="insight-label">TOTAL RECORDS</span><strong>{preview.rowCount.toLocaleString()}</strong><span className="insight-caption">rows in your file</span><span className="insight-icon purple">▤</span></article>
