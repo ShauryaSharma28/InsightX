@@ -1,0 +1,13 @@
+Month,Region,Revenue,Orders,Customer satisfaction
+January,North,18400,142,4.3
+January,South,12600,98,4.1
+February,North,22100,167,4.6
+February,South,15800,121,4.2
+March,North,19800,153,4.4
+March,South,18400,139,4.5
+April,North,26700,201,4.7
+April,South,21300,166,4.6
+May,North,24900,188,4.5
+May,South,23100,179,4.7
+June,North,31200,234,4.8
+June,South,25800,196,4.6

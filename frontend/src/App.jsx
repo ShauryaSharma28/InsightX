@@ -1,5 +1,8 @@
 import { useState } from 'react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import './App.css';
+
+const sampleCsv = `Month,Region,Revenue,Orders,Customer satisfaction\nJanuary,North,18400,142,4.3\nJanuary,South,12600,98,4.1\nFebruary,North,22100,167,4.6\nFebruary,South,15800,121,4.2\nMarch,North,19800,153,4.4\nMarch,South,18400,139,4.5\nApril,North,26700,201,4.7\nApril,South,21300,166,4.6\nMay,North,24900,188,4.5\nMay,South,23100,179,4.7\nJune,North,31200,234,4.8\nJune,South,25800,196,4.6`;
 
 function parseCsv(text) {
   const rows = [];
@@ -47,6 +50,17 @@ function App() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ column: null, direction: 'asc' });
   const [isDragging, setIsDragging] = useState(false);
+  const [page, setPage] = useState(0);
+  const [chartColumn, setChartColumn] = useState(null);
+  const [hideEmpty, setHideEmpty] = useState(false);
+  const [removeDuplicates, setRemoveDuplicates] = useState(false);
+
+  function setDataset(fileName, rows) {
+    const headers = rows[0].map((header, index) => header.trim() || `Column ${index + 1}`);
+    setPreview({ fileName, headers, data: rows.slice(1), rowCount: rows.length - 1 });
+    setChartColumn(null);
+    setPage(0);
+  }
 
   async function loadFile(file) {
     setPreview(null);
@@ -67,8 +81,7 @@ function App() {
         return;
       }
 
-      const headers = rows[0].map((header, index) => header.trim() || `Column ${index + 1}`);
-      setPreview({ fileName: file.name, headers, data: rows.slice(1), rowCount: rows.length - 1 });
+      setDataset(file.name, rows);
     } catch {
       setError('The file could not be read. Try choosing it again.');
     }
@@ -87,7 +100,8 @@ function App() {
 
   const searchTerm = search.trim().toLowerCase();
   const filteredData = preview?.data.filter((values) =>
-    values.some((value) => value.toLowerCase().includes(searchTerm)),
+    values.some((value) => (value ?? '').toLowerCase().includes(searchTerm)) &&
+    (!hideEmpty || values.every((value) => (value ?? '').trim() !== '')),
   ) ?? [];
   const sortedData = sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
@@ -107,6 +121,28 @@ function App() {
   const duplicateRows = preview ? preview.data.length - new Set(
     preview.data.map((values) => preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000')),
   ).size : 0;
+  const exportRows = removeDuplicates && preview
+    ? [...new Map(sortedData.map((values) => [preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000'), values])).values()]
+    : sortedData;
+  const numericColumns = preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
+    const values = preview.data.map((row) => Number((row[index] ?? '').trim())).filter(Number.isFinite);
+    return values.length > 0 && values.length >= preview.data.filter((row) => (row[index] ?? '').trim()).length * 0.7;
+  }) ?? [];
+  const activeChartColumn = chartColumn ?? numericColumns[0]?.index;
+  const chartData = activeChartColumn === undefined ? [] : preview?.data.slice(0, 12).map((row, index) => ({
+    label: row.find((value, columnIndex) => columnIndex !== activeChartColumn && (value ?? '').trim()) || `Row ${index + 1}`,
+    value: Number((row[activeChartColumn] ?? '').trim()) || 0,
+  })) ?? [];
+  const pageSize = 12;
+  const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
+  const visibleData = sortedData.slice(page * pageSize, (page + 1) * pageSize);
+  const columnProfiles = preview?.headers.map((header, index) => {
+    const values = preview.data.map((row) => (row[index] ?? '').trim());
+    const filled = values.filter(Boolean);
+    const nums = filled.map(Number).filter(Number.isFinite);
+    const distinct = new Set(filled).size;
+    return { header, filled: filled.length, missing: values.length - filled.length, distinct, type: nums.length === filled.length && filled.length ? 'Number' : 'Text', average: nums.length === filled.length && nums.length ? nums.reduce((sum, value) => sum + value, 0) / nums.length : null };
+  }) ?? [];
 
   function handleSort(column) {
     setSort((current) => ({
@@ -117,11 +153,11 @@ function App() {
 
   function downloadCsv() {
     if (!preview) return;
-    const content = [preview.headers, ...sortedData].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const content = [preview.headers, ...exportRows].map((row) => row.map(csvCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${preview.fileName.replace(/\.csv$/i, '')}-filtered.csv`;
+    link.download = `${preview.fileName.replace(/\.csv$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -168,6 +204,7 @@ function App() {
           <input id="csv-file" type="file" accept=".csv,text/csv" onChange={handleFileChange} />
         </label>
         <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded.</div>
+        <div className="sample-actions"><button className="sample-button" type="button" onClick={() => { setError(''); setSearch(''); setDataset('sales-sample.csv', parseCsv(sampleCsv)); }}>Explore a sample dataset <span>↗</span></button><a className="sample-download" href="/InsightX/sample-sales.csv" download>Download sample CSV ↓</a></div>
 
         {error && <p className="error-message" role="alert">{error}</p>}
 
@@ -176,10 +213,26 @@ function App() {
             <div className="dataset-title-row">
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
               <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records</p></div>
-              <button className="download-button" type="button" onClick={downloadCsv} disabled={sortedData.length === 0}>
-                <span aria-hidden="true">↓</span> Export {search ? 'results' : 'CSV'}
+              <button className="download-button" type="button" onClick={downloadCsv} disabled={exportRows.length === 0}>
+                <span aria-hidden="true">↓</span> Export {removeDuplicates ? 'cleaned CSV' : 'CSV'}
               </button>
             </div>
+
+            <div className="analysis-grid">
+              <section className="analysis-card chart-card">
+                <div className="analysis-heading"><div><span className="section-kicker">03 <i /> QUICK VISUAL</span><h3>See the shape of your data</h3></div>
+                  {numericColumns.length > 0 && <select aria-label="Choose chart column" value={activeChartColumn} onChange={(event) => setChartColumn(Number(event.target.value))}>{numericColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select>}
+                </div>
+                {chartData.length ? <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#edf0ea" /><XAxis dataKey="label" tick={{ fill: '#929b91', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#929b91', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip cursor={{ fill: '#f6f8f1' }} contentStyle={{ border: '1px solid #e6e9e2', borderRadius: 8, fontSize: 12 }} /><Bar dataKey="value" name={preview.headers[activeChartColumn]} fill="#8fa95d" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div> : <p className="no-chart">No numeric column found. Add numeric values to create a chart.</p>}
+                <p className="chart-note">First 12 rows · select a measure to change the chart</p>
+              </section>
+              <section className="analysis-card quality-card"><div className="analysis-heading"><div><span className="section-kicker">DATA HYGIENE</span><h3>Clean up your export</h3></div></div>
+                <label className="toggle-row"><span><strong>Hide incomplete rows</strong><small>Exclude rows with empty cells from the table</small></span><input type="checkbox" checked={hideEmpty} onChange={(event) => { setHideEmpty(event.target.checked); setPage(0); }} /></label>
+                <label className="toggle-row"><span><strong>Remove duplicate rows</strong><small>{duplicateRows.toLocaleString()} repeated {duplicateRows === 1 ? 'row' : 'rows'} detected in export</small></span><input type="checkbox" checked={removeDuplicates} onChange={(event) => setRemoveDuplicates(event.target.checked)} /></label>
+              </section>
+            </div>
+
+            <section className="column-section"><div className="analysis-heading"><div><span className="section-kicker">COLUMN PROFILE</span><h3>Know what each field contains</h3></div></div><div className="profile-grid">{columnProfiles.map((column) => <article className="profile-card" key={column.header}><div className="profile-title"><strong>{column.header}</strong><span>{column.type}</span></div><div className="profile-stats"><span><b>{column.filled.toLocaleString()}</b> filled</span><span><b>{column.distinct.toLocaleString()}</b> unique</span><span><b>{column.missing.toLocaleString()}</b> empty</span>{column.average !== null && <span><b>{column.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> average</span>}</div><div className="profile-meter"><i style={{ width: `${preview.rowCount ? (column.filled / preview.rowCount) * 100 : 0}%` }} /></div></article>)}</div></section>
 
             <div className="insight-grid" aria-label="Dataset quality summary">
               <article className="insight-card"><span className="insight-label">TOTAL RECORDS</span><strong>{preview.rowCount.toLocaleString()}</strong><span className="insight-caption">rows in your file</span><span className="insight-icon purple">▤</span></article>
@@ -192,10 +245,11 @@ function App() {
               <div><span className="section-kicker">02 <i /> EXPLORE YOUR DATA</span><h3>Rows &amp; columns</h3></div>
               <label className="search-control">
                 <span aria-hidden="true">⌕</span>
-                <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search this dataset" aria-label="Search all columns" />
+                <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder="Search this dataset" aria-label="Search all columns" />
                 {search && <span className="result-count">{filteredData.length} found</span>}
               </label>
             </div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setPage(0); }}>Reset view</button></div>
 
             <div className="table-scroll">
               <table>
@@ -204,12 +258,12 @@ function App() {
                     {header}<span aria-hidden="true">{sort.column === index ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
                   </button>
                 </th>)}</tr></thead>
-                <tbody>{sortedData.slice(0, 8).map((values, rowIndex) => (
-                  <tr key={rowIndex}>{preview.headers.map((_, columnIndex) => <td key={columnIndex}>{values[columnIndex]?.trim() || <span className="empty-cell">Empty</span>}</td>)}</tr>
+                <tbody>{visibleData.map((values, rowIndex) => (
+                  <tr key={page * pageSize + rowIndex}>{preview.headers.map((_, columnIndex) => <td key={columnIndex}>{values[columnIndex]?.trim() || <span className="empty-cell">Empty</span>}</td>)}</tr>
                 ))}{sortedData.length === 0 && <tr><td colSpan={preview.headers.length} className="empty-results">No rows match your search. Try another term.</td></tr>}</tbody>
               </table>
             </div>
-            <div className="table-footnote">Showing {Math.min(8, sortedData.length)} of {sortedData.length.toLocaleString()} matching records <span>·</span> Select a column heading to sort</div>
+            <div className="table-footnote">Showing {visibleData.length} of {sortedData.length.toLocaleString()} matching records <span>·</span> Select a column heading to sort<div className="pagination"><button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous</button><span>Page {page + 1} of {pageCount}</span><button type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next →</button></div></div>
           </div>
         )}
       </section>
