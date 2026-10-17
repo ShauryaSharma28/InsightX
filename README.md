@@ -1,11 +1,23 @@
 # InsightX
 
-InsightX is a personal data analytics studio built with React and Django REST Framework.
+InsightX is a browser based workspace for exploring and cleaning CSV datasets.
+
+**Live website:** [shubham01-shubh.github.io/InsightX](https://shubham01-shubh.github.io/InsightX/)
+
+## Features
+
+- Open a CSV from your device or explore the included sales sample.
+- Keep data on your device while you search, sort, filter, and paginate rows.
+- Choose visible columns and export the current view as a cleaned CSV.
+- Review missing cells, duplicate rows, and per-column data quality.
+- Compare numeric measures across categories using totals or averages.
+- Download a column report with types, completeness, distinct counts, and numeric ranges.
 
 ## Project structure
 
 - `frontend/` — React application powered by Vite
 - `backend/` — Django project and REST Framework configuration
+- `frontend/public/sample-sales.csv` — sample dataset for trying the workspace
 
 ## Run the project locally
 
