@@ -52,6 +52,8 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [page, setPage] = useState(0);
   const [chartColumn, setChartColumn] = useState(null);
+  const [chartGroupColumn, setChartGroupColumn] = useState('');
+  const [chartAggregate, setChartAggregate] = useState('sum');
   const [hideEmpty, setHideEmpty] = useState(false);
   const [removeDuplicates, setRemoveDuplicates] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState([]);
@@ -61,9 +63,16 @@ function App() {
 
   function setDataset(fileName, rows) {
     const headers = rows[0].map((header, index) => header.trim() || `Column ${index + 1}`);
-    setPreview({ fileName, headers, data: rows.slice(1), rowCount: rows.length - 1 });
+    const data = rows.slice(1);
+    const firstCategory = headers.findIndex((_, index) => {
+      const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
+      return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
+    });
+    setPreview({ fileName, headers, data, rowCount: data.length });
     setVisibleColumns(headers.map((_, index) => index));
     setChartColumn(null);
+    setChartGroupColumn(firstCategory < 0 ? '' : String(firstCategory));
+    setChartAggregate('sum');
     setPage(0);
     setFilterColumn('');
     setFilterValue('');
@@ -146,11 +155,33 @@ function App() {
     const values = preview.data.map((row) => Number((row[index] ?? '').trim())).filter(Number.isFinite);
     return values.length > 0 && values.length >= preview.data.filter((row) => (row[index] ?? '').trim()).length * 0.7;
   }) ?? [];
+  const categoricalColumns = preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
+    const values = preview.data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
+    const distinct = new Set(values).size;
+    return distinct > 1 && distinct < values.length && distinct <= 24;
+  }) ?? [];
   const activeChartColumn = chartColumn ?? numericColumns[0]?.index;
-  const chartData = activeChartColumn === undefined ? [] : preview?.data.slice(0, 12).map((row, index) => ({
-    label: row.find((value, columnIndex) => columnIndex !== activeChartColumn && (value ?? '').trim()) || `Row ${index + 1}`,
-    value: Number((row[activeChartColumn] ?? '').trim()) || 0,
-  })) ?? [];
+  const chartData = (() => {
+    if (!preview || activeChartColumn === undefined) return [];
+    if (chartGroupColumn === '') return preview.data.slice(0, 12).map((row, index) => ({
+      label: row.find((value, columnIndex) => columnIndex !== activeChartColumn && (value ?? '').trim()) || `Row ${index + 1}`,
+      value: Number((row[activeChartColumn] ?? '').trim()) || 0,
+    }));
+    const groups = new Map();
+    preview.data.forEach((row) => {
+      const value = Number((row[activeChartColumn] ?? '').trim());
+      if (!Number.isFinite(value) || (row[activeChartColumn] ?? '').trim() === '') return;
+      const label = (row[Number(chartGroupColumn)] ?? '').trim() || '(empty)';
+      const group = groups.get(label) ?? { label, value: 0, count: 0 };
+      group.value += value;
+      group.count += 1;
+      groups.set(label, group);
+    });
+    return [...groups.values()].map((group) => ({
+      label: group.label,
+      value: chartAggregate === 'average' ? group.value / group.count : group.value,
+    })).sort((left, right) => right.value - left.value).slice(0, 12);
+  })();
   const pageSize = 12;
   const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
   const visibleData = sortedData.slice(page * pageSize, (page + 1) * pageSize);
@@ -238,11 +269,14 @@ function App() {
 
             <div className="analysis-grid">
               <section className="analysis-card chart-card">
-                <div className="analysis-heading"><div><span className="section-kicker">03 <i /> QUICK VISUAL</span><h3>See the shape of your data</h3></div>
-                  {numericColumns.length > 0 && <select aria-label="Choose chart column" value={activeChartColumn} onChange={(event) => setChartColumn(Number(event.target.value))}>{numericColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select>}
+                <div className="analysis-heading"><div><span className="section-kicker">03 <i /> QUICK VISUAL</span><h3>Compare values across groups</h3></div><span className="chart-badge">✳ LIVE SUMMARY</span></div>
+                <div className="chart-controls">
+                  {numericColumns.length > 0 && <label>MEASURE<select aria-label="Choose chart measure" value={activeChartColumn} onChange={(event) => setChartColumn(Number(event.target.value))}>{numericColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>}
+                  <label>GROUP BY<select aria-label="Group chart by" value={chartGroupColumn} onChange={(event) => setChartGroupColumn(event.target.value)}><option value="">Each row</option>{categoricalColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>
+                  {chartGroupColumn !== '' && <label>CALCULATION<select aria-label="Choose chart calculation" value={chartAggregate} onChange={(event) => setChartAggregate(event.target.value)}><option value="sum">Total</option><option value="average">Average</option></select></label>}
                 </div>
                 {chartData.length ? <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#edf0ea" /><XAxis dataKey="label" tick={{ fill: '#929b91', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#929b91', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip cursor={{ fill: '#f6f8f1' }} contentStyle={{ border: '1px solid #e6e9e2', borderRadius: 8, fontSize: 12 }} /><Bar dataKey="value" name={preview.headers[activeChartColumn]} fill="#8fa95d" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div> : <p className="no-chart">No numeric column found. Add numeric values to create a chart.</p>}
-                <p className="chart-note">First 12 rows · select a measure to change the chart</p>
+                <p className="chart-note">{chartGroupColumn === '' ? 'First 12 rows in your dataset' : `${chartAggregate === 'sum' ? 'Totals' : 'Averages'} across all rows · highest values first`}</p>
               </section>
               <section className="analysis-card quality-card"><div className="analysis-heading"><div><span className="section-kicker">DATA HYGIENE</span><h3>Clean up your export</h3></div></div>
                 <label className="toggle-row"><span><strong>Hide incomplete rows</strong><small>Exclude rows with empty cells from the table</small></span><input type="checkbox" checked={hideEmpty} onChange={(event) => { setHideEmpty(event.target.checked); setPage(0); }} /></label>
