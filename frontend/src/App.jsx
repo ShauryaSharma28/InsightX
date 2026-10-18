@@ -464,11 +464,12 @@ function App() {
 
             <div className="table-heading">
               <div><span className="section-kicker">02 <i /> EXPLORE YOUR DATA</span><h3>Rows &amp; columns</h3></div>
-              <label className="search-control">
+              <div className="search-control">
                 <span aria-hidden="true">⌕</span>
-                <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder="Search this dataset" aria-label="Search all columns" />
+                <input type="search" value={search} onKeyDown={(event) => { if (event.key === 'Escape') { setSearch(''); setPage(0); } }} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder="Search this dataset" aria-label="Search all columns" />
                 {search && <span className="result-count">{filteredData.length} found</span>}
-              </label>
+                {search && <button className="clear-search" type="button" onClick={() => { setSearch(''); setPage(0); }} aria-label="Clear search">×</button>}
+              </div>
             </div>
             <div className="filter-toolbar">
               <label>Filter column<select value={filterColumn} onChange={(event) => { setFilterColumn(event.target.value); setPage(0); }}><option value="">All columns</option>{preview.headers.map((header, index) => <option value={index} key={index}>{header}</option>)}</select></label>
