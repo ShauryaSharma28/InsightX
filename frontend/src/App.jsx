@@ -152,8 +152,9 @@ function App() {
   const [showIncompleteColumns, setShowIncompleteColumns] = useState(false);
 
   function setDataset(fileName, rows, fileSize) {
-    const headers = uniqueHeaders(rows[0].map((header, index) => header.trim() || `Column ${index + 1}`));
-    const data = rows.slice(1);
+    const columnCount = rows.reduce((width, row) => Math.max(width, row.length), 0);
+    const headers = uniqueHeaders(Array.from({ length: columnCount }, (_, index) => rows[0][index]?.trim() || `Column ${index + 1}`));
+    const data = rows.slice(1).map((row) => headers.map((_, index) => row[index] ?? ''));
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
