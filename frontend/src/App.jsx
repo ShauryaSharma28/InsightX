@@ -224,16 +224,23 @@ function App() {
   const filteredData = preview?.data.filter((values) =>
     values.some((value) => (value ?? '').toLowerCase().includes(searchTerm)) &&
     (!hideEmpty || values.every((value) => (value ?? '').trim() !== '')) &&
-    (filterColumn === '' || filterValue.trim() === '' || (() => {
-      const cell = (values[Number(filterColumn)] ?? '').trim();
-      const target = filterValue.trim();
-      if (filterOperator === 'contains') return cell.toLowerCase().includes(target.toLowerCase());
-      if (filterOperator === 'equals') return cell.toLowerCase() === target.toLowerCase();
-      const number = Number(cell);
-      const comparison = Number(target);
-      if (!Number.isFinite(number) || !Number.isFinite(comparison)) return false;
-      return filterOperator === 'greater' ? number > comparison : number < comparison;
-    })()),
+    (filterOperator === 'empty' || filterOperator === 'notEmpty'
+      ? (() => {
+        const cells = filterColumn === '' ? values : [values[Number(filterColumn)] ?? ''];
+        return filterOperator === 'empty'
+          ? cells.some((value) => !value.trim())
+          : cells.every((value) => value.trim() !== '');
+      })()
+      : filterColumn === '' || filterValue.trim() === '' || (() => {
+        const cell = (values[Number(filterColumn)] ?? '').trim();
+        const target = filterValue.trim();
+        if (filterOperator === 'contains') return cell.toLowerCase().includes(target.toLowerCase());
+        if (filterOperator === 'equals') return cell.toLowerCase() === target.toLowerCase();
+        const number = Number(cell);
+        const comparison = Number(target);
+        if (!Number.isFinite(number) || !Number.isFinite(comparison)) return false;
+        return filterOperator === 'greater' ? number > comparison : number < comparison;
+      })()),
   ) ?? [];
   const sortedData = sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
@@ -474,8 +481,8 @@ function App() {
             </div>
             <div className="filter-toolbar">
               <label>Filter column<select value={filterColumn} onChange={(event) => { setFilterColumn(event.target.value); setPage(0); }}><option value="">All columns</option>{preview.headers.map((header, index) => <option value={index} key={index}>{header}</option>)}</select></label>
-              <label>Condition<select value={filterOperator} onChange={(event) => { setFilterOperator(event.target.value); setPage(0); }}><option value="contains">contains</option><option value="equals">equals</option><option value="greater">greater than</option><option value="less">less than</option></select></label>
-              <label className="filter-value">Value<input value={filterValue} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder="Type a value" /></label>
+              <label>Condition<select value={filterOperator} onChange={(event) => { setFilterOperator(event.target.value); setPage(0); }}><option value="contains">contains</option><option value="equals">equals</option><option value="greater">greater than</option><option value="less">less than</option><option value="empty">is empty</option><option value="notEmpty">is not empty</option></select></label>
+              <label className="filter-value">Value<input value={filterValue} disabled={filterOperator === 'empty' || filterOperator === 'notEmpty'} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder={filterOperator === 'empty' || filterOperator === 'notEmpty' ? 'Not needed' : 'Type a value'} /></label>
               <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
             </div>
             <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
