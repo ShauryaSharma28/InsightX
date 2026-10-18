@@ -207,6 +207,9 @@ td { color: #d0d9cf; }
 .profile-stats { color: #a0ada0; }
 .profile-meter { background: #29352b; }
 .profile-meter i { background: #a7c574; }
+.profile-frequency { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: -2px 0 11px; color: #9ba99c; font-size: 8px; }
+.frequency-value { display: inline-flex; max-width: 100%; align-items: center; gap: 5px; overflow: hidden; padding: 3px 6px; border: 1px solid #2d3c31; border-radius: 5px; background: #1b261f; color: #d2decf; text-overflow: ellipsis; white-space: nowrap; }
+.frequency-value b { color: #b4d27c; font-size: 8px; }
 .table-controls, .table-control-actions label { color: #a0ada0; }
 .table-controls .copy-view-button { padding: 5px 8px; border: 1px solid #35443a; border-radius: 5px; background: #18221c; color: #c5d1c1; }
 .copy-status { margin: 0 0 8px; color: #b4d27c; font-size: 9px; }

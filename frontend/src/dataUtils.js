@@ -200,6 +200,13 @@ export function getColumnProfiles(headers, data) {
     const filled = values.filter(Boolean);
     const nums = filled.map(Number).filter(Number.isFinite);
     const distinct = new Set(filled).size;
+    const frequencies = new Map();
+    filled.forEach((value) => frequencies.set(value, (frequencies.get(value) ?? 0) + 1));
+    const commonValues = [...frequencies.entries()]
+      .filter(([, count]) => count > 1)
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], undefined, { numeric: true, sensitivity: 'base' }))
+      .slice(0, 3)
+      .map(([value, count]) => ({ value, count }));
     const isNumeric = nums.length === filled.length && filled.length > 0;
     const dates = filled.map(parseIsoDate);
     const isDate = !isNumeric && dates.length > 0 && dates.every(Boolean);
@@ -217,6 +224,7 @@ export function getColumnProfiles(headers, data) {
       missing: values.length - filled.length,
       completeness: values.length ? (filled.length / values.length) * 100 : 0,
       distinct,
+      commonValues,
       type: isNumeric ? 'Number' : isDate ? 'Date' : 'Text',
       min: numericStats?.min ?? sortedDates[0]?.value ?? null,
       max: numericStats?.max ?? sortedDates.at(-1)?.value ?? null,
