@@ -57,6 +57,7 @@ function App() {
   const [chartAggregate, setChartAggregate] = useState('sum');
   const [hideEmpty, setHideEmpty] = useState(false);
   const [removeDuplicates, setRemoveDuplicates] = useState(false);
+  const [trimWhitespace, setTrimWhitespace] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [filterColumn, setFilterColumn] = useState('');
   const [filterOperator, setFilterOperator] = useState('contains');
@@ -86,6 +87,10 @@ function App() {
     setReplacementFind('');
     setReplacementValue('');
     setReplacementEnabled(false);
+    setHideEmpty(false);
+    setRemoveDuplicates(false);
+    setTrimWhitespace(false);
+    setShowIncompleteColumns(false);
   }
 
   function loadSampleDataset() {
@@ -188,7 +193,10 @@ function App() {
   const replacementPreview = useMemo(() => previewValueReplacement(
     exportRows, replacementColumns, replacementFind, replacementValue,
   ), [exportRows, replacementColumns, replacementFind, replacementValue]);
-  const downloadableRows = useMemo(() => replacementEnabled ? replacementPreview.rows : exportRows, [exportRows, replacementEnabled, replacementPreview]);
+  const downloadableRows = useMemo(() => {
+    const rows = replacementEnabled ? replacementPreview.rows : exportRows;
+    return trimWhitespace ? rows.map((row) => row.map((value) => value.trim())) : rows;
+  }, [exportRows, replacementEnabled, replacementPreview, trimWhitespace]);
   const numericColumns = useMemo(() => preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
     const values = preview.data.map((row) => Number((row[index] ?? '').trim())).filter(Number.isFinite);
     return values.length > 0 && values.length >= preview.data.filter((row) => (row[index] ?? '').trim()).length * 0.7;
@@ -414,6 +422,7 @@ function App() {
               </section>
               <section className="analysis-card quality-card"><div className="analysis-heading"><div><span className="section-kicker">DATA HYGIENE</span><h3>Clean up your export</h3></div></div>
                 <label className="toggle-row"><span><strong>Hide incomplete rows</strong><small>Exclude rows with empty cells from the table</small></span><input type="checkbox" checked={hideEmpty} onChange={(event) => { setHideEmpty(event.target.checked); setPage(0); }} /></label>
+                <label className="toggle-row"><span><strong>Trim whitespace on export</strong><small>Remove leading and trailing spaces from exported cells</small></span><input type="checkbox" checked={trimWhitespace} onChange={(event) => setTrimWhitespace(event.target.checked)} /></label>
                 <label className="toggle-row"><span><strong>Remove duplicate rows</strong><small>{duplicateRowsInView.toLocaleString()} repeated {duplicateRowsInView === 1 ? 'row' : 'rows'} in current view</small></span><input type="checkbox" checked={removeDuplicates} onChange={(event) => setRemoveDuplicates(event.target.checked)} /></label>
                 <div className="replacement-tool">
                   <div className="replacement-heading"><strong>Find and replace</strong><small>Preview exact cell matches in exported rows</small></div>
