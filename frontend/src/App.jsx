@@ -151,7 +151,7 @@ function App() {
   const [filterValue, setFilterValue] = useState('');
 
   function setDataset(fileName, rows, fileSize) {
-    const headers = rows[0].map((header, index) => header.trim() || `Column ${index + 1}`);
+    const headers = uniqueHeaders(rows[0].map((header, index) => header.trim() || `Column ${index + 1}`));
     const data = rows.slice(1);
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);

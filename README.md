@@ -7,6 +7,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV and JSON da
 ## Features
 
 - Open a comma-, semicolon-, or tab-separated CSV or a JSON array of records from your device, or explore the 62-row sales sample in the repository root. It includes multiple products, regions, and statuses, plus missing values and duplicate records for trying the data quality tools.
+- Blank or repeated column names receive unique labels when a dataset is opened.
 - Keep data on your device while you search, sort, filter, and paginate rows; choose 12, 24, or 50 rows per page.
 - Choose visible columns and export the current view as cleaned CSV or JSON records.
 - Review missing cells, duplicate rows in the current view, and per-column data quality.
