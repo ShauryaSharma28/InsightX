@@ -50,6 +50,7 @@
 .dataset-file-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 9px; background: #eef3e7; color: #78924b; font-size: 18px; }
 .dataset-name { min-width: 0; flex: 1; }.dataset-name h3 { margin: 0 0 4px; overflow: hidden; color: #35463b; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.dataset-name p { margin: 0; color: #a0a79f; font-size: 9px; }.dataset-name p span { padding: 0 4px; color: #c5ccc0; }
 .download-button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; border: 0; border-radius: 7px; background: #1e4034; color: #fff; font-size: 10px; font-weight: 600; cursor: pointer; transition: background .15s; }.download-button:hover { background: #2d5948; }.download-button:disabled { opacity: .45; cursor: not-allowed; }.download-button span { color: #d4ec87; font-size: 15px; }
+.export-json-button { border: 1px solid #dfe8d5; background: #fff; color: #536b45; }.export-json-button:hover { border-color: #cbd8b8; background: #f7f9f2; }
 .insight-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 19px 0 31px; }
 .insight-card { position: relative; display: grid; min-height: 101px; align-content: start; gap: 7px; padding: 13px; overflow: hidden; border: 1px solid #edf0ea; border-radius: 9px; background: #fff; }
 .insight-label { color: #99a198; font-size: 7px; font-weight: 750; letter-spacing: .12em; }.insight-card strong { color: #2e4136; font-size: 23px; font-weight: 650; letter-spacing: -.05em; line-height: 1; }.insight-caption { color: #a1a8a0; font-size: 9px; }.insight-icon { position: absolute; top: 9px; right: 10px; display: grid; width: 23px; height: 23px; place-items: center; border-radius: 7px; font-size: 12px; }.insight-icon.purple { background: #f1eff9; color: #9184bf; }.insight-icon.blue { background: #edf3f6; color: #7898aa; }.insight-icon.yellow { background: #f9f3e4; color: #b0954e; }.insight-icon.green { background: #edf4e9; color: #79a064; }
@@ -87,6 +88,7 @@ footer { display: flex; justify-content: space-between; padding: 24px 1px 30px; 
   .upload-control { min-height: 88px; gap: 11px; padding: 13px; }.upload-icon { flex-basis: 37px; height: 37px; }.browse-button { gap: 6px; padding: 9px; font-size: 9px; }
   .insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 25px; }.insight-card { min-height: 92px; }
   .table-heading { align-items: start; flex-direction: column; }.search-control { width: 100%; max-width: none; }
+  .dataset-title-row { flex-wrap: wrap; }
   .analysis-grid { grid-template-columns: 1fr; }.chart-wrap { height: 170px; }
   footer { font-size: 7px; }
 }

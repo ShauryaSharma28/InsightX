@@ -88,6 +88,29 @@ function downloadCsvFile(fileName, content) {
   URL.revokeObjectURL(url);
 }
 
+function downloadJsonFile(fileName, records) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(records, null, 2)], { type: 'application/json;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function uniqueHeaders(headers) {
+  const used = new Set();
+  return headers.map((header) => {
+    let uniqueHeader = header;
+    let suffix = 2;
+    while (used.has(uniqueHeader)) {
+      uniqueHeader = `${header} (${suffix})`;
+      suffix += 1;
+    }
+    used.add(uniqueHeader);
+    return uniqueHeader;
+  });
+}
+
 function App() {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
@@ -287,7 +310,16 @@ function App() {
   function downloadCsv() {
     if (!preview) return;
     const content = [[...selectedColumns.map((index) => preview.headers[index])], ...exportRows.map((row) => selectedColumns.map((index) => row[index] ?? ''))].map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.csv$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`, content);
+  }
+
+  function downloadJson() {
+    if (!preview) return;
+    const headers = uniqueHeaders(selectedColumns.map((index) => preview.headers[index]));
+    const records = exportRows.map((row) => Object.fromEntries(
+      headers.map((header, index) => [header, row[selectedColumns[index]] ?? '']),
+    ));
+    downloadJsonFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.json`, records);
   }
 
   function downloadColumnReport() {
@@ -297,7 +329,7 @@ function App() {
       ...columnProfiles.map((column) => [column.header, column.type, column.filled, column.missing, column.distinct, column.min ?? '', column.max ?? '', column.average ?? '', column.median ?? '']),
     ];
     const content = report.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.csv$/i, '')}-column-report.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-column-report.csv`, content);
   }
 
   function downloadSampleCsv() {
@@ -355,6 +387,9 @@ function App() {
             <div className="dataset-title-row">
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
               <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records <span>·</span> {formatFileSize(preview.fileSize)}</p></div>
+              <button className="download-button export-json-button" type="button" onClick={downloadJson} disabled={exportRows.length === 0}>
+                Export JSON
+              </button>
               <button className="download-button" type="button" onClick={downloadCsv} disabled={exportRows.length === 0}>
                 <span aria-hidden="true">↓</span> Export {removeDuplicates ? 'cleaned CSV' : 'CSV'}
               </button>
