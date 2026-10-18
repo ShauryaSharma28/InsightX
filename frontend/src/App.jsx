@@ -1,86 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
+import { countDuplicateRows, filterRows, getColumnProfiles, normalizeRows, parseCsv, parseJson, uniqueHeaders } from './dataUtils.js';
 import './App.css';
-
-function detectCsvDelimiter(text) {
-  const delimiters = [',', ';', '\t'];
-  const counts = new Map(delimiters.map((delimiter) => [delimiter, 0]));
-  let quoted = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (character === '"') {
-      if (quoted && text[index + 1] === '"') index += 1;
-      else quoted = !quoted;
-    } else if (!quoted && (character === '\n' || character === '\r')) {
-      break;
-    } else if (!quoted && counts.has(character)) {
-      counts.set(character, counts.get(character) + 1);
-    }
-  }
-
-  return delimiters.reduce((best, delimiter) => counts.get(delimiter) > counts.get(best) ? delimiter : best, ',');
-}
-
-function parseCsv(text) {
-  // UTF-8 CSV exports often start with a BOM, which otherwise becomes part of
-  // the first column name.
-  text = text.replace(/^\uFEFF/, '');
-  const delimiter = detectCsvDelimiter(text);
-  const rows = [];
-  let row = [];
-  let cell = '';
-  let quoted = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-
-    if (character === '"') {
-      if (quoted && text[index + 1] === '"') {
-        cell += '"';
-        index += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (character === delimiter && !quoted) {
-      row.push(cell);
-      cell = '';
-    } else if ((character === '\n' || character === '\r') && !quoted) {
-      if (character === '\r' && text[index + 1] === '\n') index += 1;
-      row.push(cell);
-      if (row.some((value) => value.trim() !== '')) rows.push(row);
-      row = [];
-      cell = '';
-    } else {
-      cell += character;
-    }
-  }
-
-  row.push(cell);
-  if (row.some((value) => value.trim() !== '')) rows.push(row);
-  return rows;
-}
-
-function parseJson(text) {
-  const records = JSON.parse(text);
-  if (!Array.isArray(records) || records.length === 0 || records.some(
-    (record) => !record || typeof record !== 'object' || Array.isArray(record),
-  )) {
-    throw new Error('JSON must contain a non-empty array of objects');
-  }
-
-  const headers = [...new Set(records.flatMap((record) => Object.keys(record)))];
-  if (headers.length === 0) throw new Error('JSON records do not contain any fields');
-  return [
-    headers,
-    ...records.map((record) => headers.map((header) => {
-      const value = record[header];
-      if (value == null) return '';
-      return typeof value === 'object' ? JSON.stringify(value) : String(value);
-    })),
-  ];
-}
 
 function csvCell(value) {
   const text = value ?? '';
@@ -118,20 +40,6 @@ function downloadJsonFile(fileName, records) {
   URL.revokeObjectURL(url);
 }
 
-function uniqueHeaders(headers) {
-  const used = new Set();
-  return headers.map((header) => {
-    let uniqueHeader = header;
-    let suffix = 2;
-    while (used.has(uniqueHeader)) {
-      uniqueHeader = `${header} (${suffix})`;
-      suffix += 1;
-    }
-    used.add(uniqueHeader);
-    return uniqueHeader;
-  });
-}
-
 function App() {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
@@ -152,9 +60,7 @@ function App() {
   const [showIncompleteColumns, setShowIncompleteColumns] = useState(false);
 
   function setDataset(fileName, rows, fileSize) {
-    const columnCount = rows.reduce((width, row) => Math.max(width, row.length), 0);
-    const headers = uniqueHeaders(Array.from({ length: columnCount }, (_, index) => rows[0][index]?.trim() || `Column ${index + 1}`));
-    const data = rows.slice(1).map((row) => headers.map((_, index) => row[index] ?? ''));
+    const { headers, data } = normalizeRows(rows);
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
@@ -221,27 +127,13 @@ function App() {
   }
 
   const searchTerm = search.trim().toLowerCase();
-  const filteredData = useMemo(() => preview?.data.filter((values) =>
-    values.some((value) => (value ?? '').toLowerCase().includes(searchTerm)) &&
-    (!hideEmpty || values.every((value) => (value ?? '').trim() !== '')) &&
-    (filterOperator === 'empty' || filterOperator === 'notEmpty'
-      ? (() => {
-        const cells = filterColumn === '' ? values : [values[Number(filterColumn)] ?? ''];
-        return filterOperator === 'empty'
-          ? cells.some((value) => !value.trim())
-          : cells.every((value) => value.trim() !== '');
-      })()
-      : filterColumn === '' || filterValue.trim() === '' || (() => {
-        const cell = (values[Number(filterColumn)] ?? '').trim();
-        const target = filterValue.trim();
-        if (filterOperator === 'contains') return cell.toLowerCase().includes(target.toLowerCase());
-        if (filterOperator === 'equals') return cell.toLowerCase() === target.toLowerCase();
-        const number = Number(cell);
-        const comparison = Number(target);
-        if (!Number.isFinite(number) || !Number.isFinite(comparison)) return false;
-        return filterOperator === 'greater' ? number > comparison : number < comparison;
-      })()),
-  ) ?? [], [filterColumn, filterOperator, filterValue, hideEmpty, preview, searchTerm]);
+  const filteredData = useMemo(() => filterRows(preview?.data ?? [], {
+    searchTerm,
+    hideEmpty,
+    filterColumn,
+    filterOperator,
+    filterValue,
+  }), [filterColumn, filterOperator, filterValue, hideEmpty, preview, searchTerm]);
   const sortedData = useMemo(() => sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
     const rightValue = (right[sort.column] ?? '').trim();
@@ -257,12 +149,8 @@ function App() {
   const missingCells = useMemo(() => preview?.data.reduce((count, values) => count + preview.headers.reduce(
     (rowCount, _, index) => rowCount + ((values[index] ?? '').trim() === '' ? 1 : 0), 0,
   ), 0) ?? 0, [preview]);
-  const duplicateRows = useMemo(() => preview ? preview.data.length - new Set(
-    preview.data.map((values) => preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000')),
-  ).size : 0, [preview]);
-  const duplicateRowsInView = useMemo(() => preview ? sortedData.length - new Set(
-    sortedData.map((values) => preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000')),
-  ).size : 0, [preview, sortedData]);
+  const duplicateRows = useMemo(() => preview ? countDuplicateRows(preview.data, preview.headers) : 0, [preview]);
+  const duplicateRowsInView = useMemo(() => preview ? countDuplicateRows(sortedData, preview.headers) : 0, [preview, sortedData]);
   const exportRows = useMemo(() => removeDuplicates && preview
     ? [...new Map(sortedData.map((values) => [preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000'), values])).values()]
     : sortedData, [preview, removeDuplicates, sortedData]);
@@ -306,33 +194,7 @@ function App() {
   }, [activeChartColumn, chartAggregate, chartGroupColumn, filteredData, preview]);
   const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
   const visibleData = sortedData.slice(page * pageSize, (page + 1) * pageSize);
-  const columnProfiles = useMemo(() => preview?.headers.map((header, index) => {
-    const values = preview.data.map((row) => (row[index] ?? '').trim());
-    const filled = values.filter(Boolean);
-    const nums = filled.map(Number).filter(Number.isFinite);
-    const distinct = new Set(filled).size;
-    const isNumeric = nums.length === filled.length && filled.length > 0;
-    const sortedNums = isNumeric ? [...nums].sort((left, right) => left - right) : [];
-    const numericStats = isNumeric ? nums.reduce((stats, value) => ({
-      min: Math.min(stats.min, value),
-      max: Math.max(stats.max, value),
-      sum: stats.sum + value,
-    }), { min: Infinity, max: -Infinity, sum: 0 }) : null;
-    return {
-      header,
-      filled: filled.length,
-      missing: values.length - filled.length,
-      completeness: values.length ? (filled.length / values.length) * 100 : 0,
-      distinct,
-      type: isNumeric ? 'Number' : 'Text',
-      min: numericStats?.min ?? null,
-      max: numericStats?.max ?? null,
-      average: numericStats ? numericStats.sum / nums.length : null,
-      median: sortedNums.length
-        ? (sortedNums[Math.floor((sortedNums.length - 1) / 2)] + sortedNums[Math.ceil((sortedNums.length - 1) / 2)]) / 2
-        : null,
-    };
-  }) ?? [], [preview]);
+  const columnProfiles = useMemo(() => getColumnProfiles(preview?.headers ?? [], preview?.data ?? []), [preview]);
   const displayedColumnProfiles = useMemo(() => showIncompleteColumns
     ? columnProfiles.filter((column) => column.missing > 0)
     : columnProfiles, [columnProfiles, showIncompleteColumns]);

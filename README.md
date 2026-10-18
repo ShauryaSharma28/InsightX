@@ -62,5 +62,6 @@ Run these commands from `frontend/`:
 npm run dev     # Start the development server
 npm run build   # Create a production build
 npm run lint    # Check the frontend source with Oxlint
+npm test        # Run parser, filter, duplicate, and profiling unit tests
 npm run preview # Preview a production build locally
 ```
