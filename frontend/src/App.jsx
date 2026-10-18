@@ -46,6 +46,16 @@ function csvCell(value) {
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
+function downloadCsvFile(fileName, content) {
+  const csv = content.startsWith('\uFEFF') ? content : `\uFEFF${content}`;
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function App() {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
@@ -239,12 +249,7 @@ function App() {
   function downloadCsv() {
     if (!preview) return;
     const content = [[...selectedColumns.map((index) => preview.headers[index])], ...exportRows.map((row) => selectedColumns.map((index) => row[index] ?? ''))].map((row) => row.map(csvCell).join(',')).join('\r\n');
-    const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${preview.fileName.replace(/\.csv$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile(`${preview.fileName.replace(/\.csv$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`, content);
   }
 
   function downloadColumnReport() {
@@ -254,21 +259,11 @@ function App() {
       ...columnProfiles.map((column) => [column.header, column.type, column.filled, column.missing, column.distinct, column.min ?? '', column.max ?? '', column.average ?? '']),
     ];
     const content = report.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${preview.fileName.replace(/\.csv$/i, '')}-column-report.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile(`${preview.fileName.replace(/\.csv$/i, '')}-column-report.csv`, content);
   }
 
   function downloadSampleCsv() {
-    const url = URL.createObjectURL(new Blob([sampleCsv], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'sample-sales.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile('sample-sales.csv', sampleCsv);
   }
 
   return (
