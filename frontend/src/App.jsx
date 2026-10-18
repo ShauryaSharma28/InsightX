@@ -230,6 +230,9 @@ function App() {
   const duplicateRows = preview ? preview.data.length - new Set(
     preview.data.map((values) => preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000')),
   ).size : 0;
+  const duplicateRowsInView = preview ? sortedData.length - new Set(
+    sortedData.map((values) => preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000')),
+  ).size : 0;
   const exportRows = removeDuplicates && preview
     ? [...new Map(sortedData.map((values) => [preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000'), values])).values()]
     : sortedData;
@@ -409,7 +412,7 @@ function App() {
               </section>
               <section className="analysis-card quality-card"><div className="analysis-heading"><div><span className="section-kicker">DATA HYGIENE</span><h3>Clean up your export</h3></div></div>
                 <label className="toggle-row"><span><strong>Hide incomplete rows</strong><small>Exclude rows with empty cells from the table</small></span><input type="checkbox" checked={hideEmpty} onChange={(event) => { setHideEmpty(event.target.checked); setPage(0); }} /></label>
-                <label className="toggle-row"><span><strong>Remove duplicate rows</strong><small>{duplicateRows.toLocaleString()} repeated {duplicateRows === 1 ? 'row' : 'rows'} detected in export</small></span><input type="checkbox" checked={removeDuplicates} onChange={(event) => setRemoveDuplicates(event.target.checked)} /></label>
+                <label className="toggle-row"><span><strong>Remove duplicate rows</strong><small>{duplicateRowsInView.toLocaleString()} repeated {duplicateRowsInView === 1 ? 'row' : 'rows'} in current view</small></span><input type="checkbox" checked={removeDuplicates} onChange={(event) => setRemoveDuplicates(event.target.checked)} /></label>
               </section>
             </div>
 
