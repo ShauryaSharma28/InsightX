@@ -249,6 +249,7 @@ function App() {
     : columnProfiles, [columnProfiles, showIncompleteColumns]);
 
   function handleSort(column) {
+    setPage(0);
     setSort((current) => ({
       column,
       direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
