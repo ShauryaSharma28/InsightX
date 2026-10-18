@@ -4,6 +4,9 @@ import sampleCsv from '../../sample-sales.csv?raw';
 import './App.css';
 
 function parseCsv(text) {
+  // UTF-8 CSV exports often start with a BOM, which otherwise becomes part of
+  // the first column name.
+  text = text.replace(/^\uFEFF/, '');
   const rows = [];
   let row = [];
   let cell = '';
