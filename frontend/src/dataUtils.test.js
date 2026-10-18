@@ -83,3 +83,13 @@ test('getColumnProfiles reports completeness and numeric summary statistics', ()
   assert.equal(profiles[1].type, 'Text');
   assert.equal(profiles[1].average, null);
 });
+
+test('getColumnProfiles identifies ISO dates and reports their range', () => {
+  const [profile] = getColumnProfiles(['Created'], [['2024-02-29'], ['2024-01-15'], ['']]);
+
+  assert.equal(profile.type, 'Date');
+  assert.equal(profile.missing, 1);
+  assert.equal(profile.min, '2024-01-15');
+  assert.equal(profile.max, '2024-02-29');
+  assert.equal(profile.average, null);
+});

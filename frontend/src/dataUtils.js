@@ -160,6 +160,23 @@ export function countDuplicateRows(rows, headers) {
   ).size;
 }
 
+function parseIsoDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)$/.exec(value);
+  if (!match) return null;
+
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const calendarDate = new Date(0);
+  calendarDate.setUTCFullYear(year, month - 1, day);
+  calendarDate.setUTCHours(0, 0, 0, 0);
+  if (calendarDate.getUTCFullYear() !== year || calendarDate.getUTCMonth() !== month - 1 || calendarDate.getUTCDate() !== day) return null;
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? { value, timestamp } : null;
+}
+
 export function getColumnProfiles(headers, data) {
   return headers.map((header, index) => {
     const values = data.map((row) => (row[index] ?? '').trim());
@@ -167,7 +184,10 @@ export function getColumnProfiles(headers, data) {
     const nums = filled.map(Number).filter(Number.isFinite);
     const distinct = new Set(filled).size;
     const isNumeric = nums.length === filled.length && filled.length > 0;
+    const dates = filled.map(parseIsoDate);
+    const isDate = !isNumeric && dates.length > 0 && dates.every(Boolean);
     const sortedNums = isNumeric ? [...nums].sort((left, right) => left - right) : [];
+    const sortedDates = isDate ? [...dates].sort((left, right) => left.timestamp - right.timestamp) : [];
     const numericStats = isNumeric ? nums.reduce((stats, value) => ({
       min: Math.min(stats.min, value),
       max: Math.max(stats.max, value),
@@ -180,9 +200,9 @@ export function getColumnProfiles(headers, data) {
       missing: values.length - filled.length,
       completeness: values.length ? (filled.length / values.length) * 100 : 0,
       distinct,
-      type: isNumeric ? 'Number' : 'Text',
-      min: numericStats?.min ?? null,
-      max: numericStats?.max ?? null,
+      type: isNumeric ? 'Number' : isDate ? 'Date' : 'Text',
+      min: numericStats?.min ?? sortedDates[0]?.value ?? null,
+      max: numericStats?.max ?? sortedDates.at(-1)?.value ?? null,
       average: numericStats ? numericStats.sum / nums.length : null,
       median: sortedNums.length
         ? (sortedNums[Math.floor((sortedNums.length - 1) / 2)] + sortedNums[Math.ceil((sortedNums.length - 1) / 2)]) / 2
