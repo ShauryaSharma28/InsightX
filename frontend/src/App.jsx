@@ -365,7 +365,7 @@ function App() {
 
             <div className="table-scroll">
               <table>
-                <thead><tr>{selectedColumns.map((index) => { const header = preview.headers[index]; return <th key={`${header}-${index}`}>
+                <thead><tr>{selectedColumns.map((index) => { const header = preview.headers[index]; return <th key={`${header}-${index}`} aria-sort={sort.column === index ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
                   <button className="sort-button" type="button" onClick={() => handleSort(index)} aria-label={`Sort by ${header}${sort.column === index ? `, ${sort.direction}ending` : ''}`}>
                     {header}<span aria-hidden="true">{sort.column === index ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
                   </button>
