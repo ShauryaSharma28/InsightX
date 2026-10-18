@@ -133,6 +133,27 @@ export function filterRows(rows, {
   );
 }
 
+export function previewValueReplacement(rows, columnIndexes, findValue, replacementValue) {
+  if (findValue === '' || findValue === replacementValue) return { rows, count: 0, examples: [] };
+
+  const selectedIndexes = new Set(columnIndexes);
+  const examples = [];
+  let count = 0;
+  const replacedRows = rows.map((row, rowIndex) => {
+    let changed = false;
+    const replacedRow = row.map((value, columnIndex) => {
+      if (!selectedIndexes.has(columnIndex) || value !== findValue) return value;
+      count += 1;
+      changed = true;
+      if (examples.length < 3) examples.push({ row: rowIndex + 1, column: columnIndex, before: value, after: replacementValue });
+      return replacementValue;
+    });
+    return changed ? replacedRow : row;
+  });
+
+  return { rows: replacedRows, count, examples };
+}
+
 export function countDuplicateRows(rows, headers) {
   return rows.length - new Set(
     rows.map((values) => headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000')),

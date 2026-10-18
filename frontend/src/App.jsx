@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
-import { countDuplicateRows, filterRows, getColumnProfiles, normalizeRows, parseCsv, parseJson, uniqueHeaders } from './dataUtils.js';
+import { countDuplicateRows, filterRows, getColumnProfiles, normalizeRows, parseCsv, parseJson, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
 import './App.css';
 
 function csvCell(value) {
@@ -58,6 +58,10 @@ function App() {
   const [filterOperator, setFilterOperator] = useState('contains');
   const [filterValue, setFilterValue] = useState('');
   const [showIncompleteColumns, setShowIncompleteColumns] = useState(false);
+  const [replacementColumn, setReplacementColumn] = useState('');
+  const [replacementFind, setReplacementFind] = useState('');
+  const [replacementValue, setReplacementValue] = useState('');
+  const [replacementEnabled, setReplacementEnabled] = useState(false);
 
   function setDataset(fileName, rows, fileSize) {
     const { headers, data } = normalizeRows(rows);
@@ -73,6 +77,10 @@ function App() {
     setPage(0);
     setFilterColumn('');
     setFilterValue('');
+    setReplacementColumn('');
+    setReplacementFind('');
+    setReplacementValue('');
+    setReplacementEnabled(false);
   }
 
   function loadSampleDataset() {
@@ -155,6 +163,16 @@ function App() {
     ? [...new Map(sortedData.map((values) => [preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000'), values])).values()]
     : sortedData, [preview, removeDuplicates, sortedData]);
   const selectedColumns = useMemo(() => preview?.headers.map((_, index) => index).filter((index) => visibleColumns.includes(index)) ?? [], [preview, visibleColumns]);
+  const effectiveReplacementColumn = replacementColumn !== '' && selectedColumns.includes(Number(replacementColumn))
+    ? replacementColumn
+    : '';
+  const replacementColumns = useMemo(() => effectiveReplacementColumn === ''
+    ? selectedColumns
+    : [Number(effectiveReplacementColumn)], [effectiveReplacementColumn, selectedColumns]);
+  const replacementPreview = useMemo(() => previewValueReplacement(
+    exportRows, replacementColumns, replacementFind, replacementValue,
+  ), [exportRows, replacementColumns, replacementFind, replacementValue]);
+  const downloadableRows = useMemo(() => replacementEnabled ? replacementPreview.rows : exportRows, [exportRows, replacementEnabled, replacementPreview]);
   const numericColumns = useMemo(() => preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
     const values = preview.data.map((row) => Number((row[index] ?? '').trim())).filter(Number.isFinite);
     return values.length > 0 && values.length >= preview.data.filter((row) => (row[index] ?? '').trim()).length * 0.7;
@@ -208,14 +226,14 @@ function App() {
 
   function downloadCsv() {
     if (!preview) return;
-    const content = [[...selectedColumns.map((index) => preview.headers[index])], ...exportRows.map((row) => selectedColumns.map((index) => row[index] ?? ''))].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const content = [[...selectedColumns.map((index) => preview.headers[index])], ...downloadableRows.map((row) => selectedColumns.map((index) => row[index] ?? ''))].map((row) => row.map(csvCell).join(',')).join('\r\n');
     downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`, content);
   }
 
   function downloadJson() {
     if (!preview) return;
     const headers = uniqueHeaders(selectedColumns.map((index) => preview.headers[index]));
-    const records = exportRows.map((row) => Object.fromEntries(
+    const records = downloadableRows.map((row) => Object.fromEntries(
       headers.map((header, index) => [header, row[selectedColumns[index]] ?? '']),
     ));
     downloadJsonFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.json`, records);
@@ -297,11 +315,11 @@ function App() {
             <div className="dataset-title-row">
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
               <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records <span>·</span> {formatFileSize(preview.fileSize)}</p></div>
-              <button className="download-button export-json-button" type="button" onClick={downloadJson} disabled={exportRows.length === 0}>
-                Export {removeDuplicates ? 'cleaned JSON' : 'JSON'} ({exportRows.length.toLocaleString()})
+              <button className="download-button export-json-button" type="button" onClick={downloadJson} disabled={downloadableRows.length === 0}>
+                Export {removeDuplicates || replacementEnabled ? 'cleaned JSON' : 'JSON'} ({downloadableRows.length.toLocaleString()})
               </button>
-              <button className="download-button" type="button" onClick={downloadCsv} disabled={exportRows.length === 0}>
-                <span aria-hidden="true">↓</span> Export {removeDuplicates ? 'cleaned CSV' : 'CSV'} ({exportRows.length.toLocaleString()})
+              <button className="download-button" type="button" onClick={downloadCsv} disabled={downloadableRows.length === 0}>
+                <span aria-hidden="true">↓</span> Export {removeDuplicates || replacementEnabled ? 'cleaned CSV' : 'CSV'} ({downloadableRows.length.toLocaleString()})
               </button>
             </div>
 
@@ -319,6 +337,16 @@ function App() {
               <section className="analysis-card quality-card"><div className="analysis-heading"><div><span className="section-kicker">DATA HYGIENE</span><h3>Clean up your export</h3></div></div>
                 <label className="toggle-row"><span><strong>Hide incomplete rows</strong><small>Exclude rows with empty cells from the table</small></span><input type="checkbox" checked={hideEmpty} onChange={(event) => { setHideEmpty(event.target.checked); setPage(0); }} /></label>
                 <label className="toggle-row"><span><strong>Remove duplicate rows</strong><small>{duplicateRowsInView.toLocaleString()} repeated {duplicateRowsInView === 1 ? 'row' : 'rows'} in current view</small></span><input type="checkbox" checked={removeDuplicates} onChange={(event) => setRemoveDuplicates(event.target.checked)} /></label>
+                <div className="replacement-tool">
+                  <div className="replacement-heading"><strong>Find and replace</strong><small>Preview exact cell matches in exported rows</small></div>
+                  <div className="replacement-fields">
+                    <label>Column<select value={effectiveReplacementColumn} onChange={(event) => { setReplacementColumn(event.target.value); setReplacementEnabled(false); }}><option value="">All visible columns</option>{selectedColumns.map((index) => <option key={index} value={index}>{preview.headers[index]}</option>)}</select></label>
+                    <label>Find exact value<input value={replacementFind} onChange={(event) => { setReplacementFind(event.target.value); setReplacementEnabled(false); }} placeholder="Value to find" /></label>
+                    <label>Replace with<input value={replacementValue} onChange={(event) => { setReplacementValue(event.target.value); setReplacementEnabled(false); }} placeholder="New value" /></label>
+                  </div>
+                  <div className="replacement-status"><small>{replacementPreview.count.toLocaleString()} exact {replacementPreview.count === 1 ? 'match' : 'matches'} in export rows</small><button className="report-button" type="button" aria-pressed={replacementEnabled} disabled={replacementPreview.count === 0} onClick={() => setReplacementEnabled((current) => !current)}>{replacementEnabled ? 'Disable replacement' : 'Use in export'}</button></div>
+                  {replacementPreview.examples.length > 0 && <ul className="replacement-examples">{replacementPreview.examples.map((example) => <li key={`${example.row}-${example.column}`}><span>{preview.headers[example.column]} · export row {example.row}</span><code>{example.before || '(empty)'}</code><span aria-hidden="true">→</span><code>{example.after || '(empty)'}</code></li>)}</ul>}
+                </div>
               </section>
             </div>
 

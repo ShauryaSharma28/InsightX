@@ -7,6 +7,7 @@ import {
   normalizeRows,
   parseCsv,
   parseJson,
+  previewValueReplacement,
 } from './dataUtils.js';
 
 test('parseCsv detects semicolon separators and preserves quoted delimiters and line breaks', () => {
@@ -58,6 +59,16 @@ test('filterRows handles search, numeric comparisons, and empty-cell conditions'
 
 test('countDuplicateRows counts repeated complete records', () => {
   assert.equal(countDuplicateRows([['Ada', '10'], ['Ada', '10'], ['Ada', '12'], ['', '']], ['Name', 'Score']), 1);
+});
+
+test('previewValueReplacement changes exact matches only in selected columns', () => {
+  const rows = [['open', 'open'], ['closed', 'open']];
+  const preview = previewValueReplacement(rows, [1], 'open', 'active');
+
+  assert.deepEqual(preview.rows, [['open', 'active'], ['closed', 'active']]);
+  assert.equal(preview.count, 2);
+  assert.deepEqual(preview.examples[0], { row: 1, column: 1, before: 'open', after: 'active' });
+  assert.deepEqual(rows, [['open', 'open'], ['closed', 'open']]);
 });
 
 test('getColumnProfiles reports completeness and numeric summary statistics', () => {
