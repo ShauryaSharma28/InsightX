@@ -63,6 +63,7 @@ function App() {
   const [filterOperator, setFilterOperator] = useState('contains');
   const [filterValue, setFilterValue] = useState('');
   const [showIncompleteColumns, setShowIncompleteColumns] = useState(false);
+  const [profileCurrentView, setProfileCurrentView] = useState(false);
   const [replacementColumn, setReplacementColumn] = useState('');
   const [replacementFind, setReplacementFind] = useState('');
   const [replacementValue, setReplacementValue] = useState('');
@@ -91,6 +92,7 @@ function App() {
     setRemoveDuplicates(false);
     setTrimWhitespace(false);
     setShowIncompleteColumns(false);
+    setProfileCurrentView(false);
   }
 
   function loadSampleDataset() {
@@ -178,6 +180,9 @@ function App() {
   const missingCells = useMemo(() => preview?.data.reduce((count, values) => count + preview.headers.reduce(
     (rowCount, _, index) => rowCount + ((values[index] ?? '').trim() === '' ? 1 : 0), 0,
   ), 0) ?? 0, [preview]);
+  const incompleteRows = useMemo(() => preview?.data.filter((row) => preview.headers.some(
+    (_, index) => !(row[index] ?? '').trim(),
+  )) ?? [], [preview]);
   const duplicateRows = useMemo(() => preview ? countDuplicateRows(preview.data, preview.headers) : 0, [preview]);
   const duplicateRowsInView = useMemo(() => preview ? countDuplicateRows(sortedData, preview.headers) : 0, [preview, sortedData]);
   const exportRows = useMemo(() => removeDuplicates && preview
@@ -236,7 +241,9 @@ function App() {
   }, [activeChartColumn, chartAggregate, chartGroupColumn, filteredData, preview]);
   const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
   const visibleData = sortedData.slice(page * pageSize, (page + 1) * pageSize);
-  const columnProfiles = useMemo(() => getColumnProfiles(preview?.headers ?? [], preview?.data ?? []), [preview]);
+  const columnProfiles = useMemo(() => getColumnProfiles(
+    preview?.headers ?? [], profileCurrentView ? filteredData : preview?.data ?? [],
+  ), [filteredData, preview, profileCurrentView]);
   const displayedColumnProfiles = useMemo(() => showIncompleteColumns
     ? columnProfiles.filter((column) => column.missing > 0)
     : columnProfiles, [columnProfiles, showIncompleteColumns]);
@@ -345,6 +352,13 @@ function App() {
     downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-column-report.csv`, content);
   }
 
+  function downloadIncompleteRows() {
+    if (!preview) return;
+    if (incompleteRows.length === 0) return;
+    const content = [preview.headers, ...incompleteRows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-incomplete-rows.csv`, content);
+  }
+
   function downloadSampleCsv() {
     downloadCsvFile('sample-sales.csv', sampleCsv);
   }
@@ -441,7 +455,9 @@ function App() {
               <div className="analysis-heading">
                 <div><span className="section-kicker">COLUMN PROFILE</span><h3>Know what each field contains</h3></div>
                 <div className="profile-actions">
+                  <button className="report-button" type="button" aria-pressed={profileCurrentView} onClick={() => setProfileCurrentView((current) => !current)}>{profileCurrentView ? 'Profiling current view' : 'Profile current view'}</button>
                   <button className="report-button" type="button" aria-pressed={showIncompleteColumns} onClick={() => setShowIncompleteColumns((current) => !current)}>{showIncompleteColumns ? 'Show all columns' : 'Show incomplete only'}</button>
+                  <button className="report-button" type="button" onClick={downloadIncompleteRows} disabled={incompleteRows.length === 0}>Export incomplete rows ({incompleteRows.length})</button>
                   <button className="report-button" type="button" onClick={downloadColumnReport}>Download report</button>
                 </div>
               </div>
