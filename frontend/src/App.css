@@ -67,6 +67,7 @@ td { color: #5c675e; }tr:last-child td { border-bottom: 0; }.empty-cell { color:
 .analysis-card { min-width: 0; padding: 17px; border: 1px solid #edf0ea; border-radius: 9px; background: #fff; }
 .chart-card { border-color: #e7ecdf; background: radial-gradient(ellipse at 90% 0%, #f5f8ed 0, #fff 48%); }
 .analysis-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.analysis-heading h3, .column-section h3 { margin: 7px 0 0; color: #304239; font-size: 13px; font-weight: 650; letter-spacing: -.025em; }
+.profile-actions { display: flex; align-items: center; gap: 6px; }.profile-empty { grid-column: 1 / -1; margin: 0; padding: 14px; border: 1px dashed #e5eadf; border-radius: 8px; color: #899487; font-size: 10px; text-align: center; }
 .report-button { flex: 0 0 auto; padding: 8px 10px; border: 1px solid #e5eadf; border-radius: 6px; background: #fff; color: #64774e; font-size: 9px; font-weight: 650; cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }.report-button:hover { transform: translateY(-1px); border-color: #cbd8b8; background: #f7f9f2; }
 .analysis-heading select { max-width: 150px; padding: 7px 26px 7px 9px; border: 1px solid #e9ece6; border-radius: 6px; background: #fff; color: #526154; font-size: 10px; }
 .chart-badge { flex: 0 0 auto; padding: 6px 8px; border: 1px solid #e6ecd9; border-radius: 20px; background: rgb(255 255 255 / 75%); color: #879b62; font-size: 7px; font-weight: 750; letter-spacing: .08em; }

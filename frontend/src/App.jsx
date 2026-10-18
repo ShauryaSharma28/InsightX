@@ -149,6 +149,7 @@ function App() {
   const [filterColumn, setFilterColumn] = useState('');
   const [filterOperator, setFilterOperator] = useState('contains');
   const [filterValue, setFilterValue] = useState('');
+  const [showIncompleteColumns, setShowIncompleteColumns] = useState(false);
 
   function setDataset(fileName, rows, fileSize) {
     const headers = uniqueHeaders(rows[0].map((header, index) => header.trim() || `Column ${index + 1}`));
@@ -324,6 +325,9 @@ function App() {
         : null,
     };
   }) ?? [];
+  const displayedColumnProfiles = showIncompleteColumns
+    ? columnProfiles.filter((column) => column.missing > 0)
+    : columnProfiles;
 
   function handleSort(column) {
     setSort((current) => ({
@@ -437,7 +441,19 @@ function App() {
               </section>
             </div>
 
-            <section className="column-section"><div className="analysis-heading"><div><span className="section-kicker">COLUMN PROFILE</span><h3>Know what each field contains</h3></div><button className="report-button" type="button" onClick={downloadColumnReport}>↓ Download report</button></div><div className="profile-grid">{columnProfiles.map((column) => <article className="profile-card" key={column.header}><div className="profile-title"><strong>{column.header}</strong><span>{column.type}</span></div><div className="profile-stats"><span><b>{column.filled.toLocaleString()}</b> filled</span><span><b>{column.distinct.toLocaleString()}</b> unique</span><span><b>{column.missing.toLocaleString()}</b> empty</span><span><b>{column.completeness.toLocaleString(undefined, { maximumFractionDigits: 1 })}%</b> complete</span>{column.average !== null && <><span><b>{column.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> min</span><span><b>{column.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> max</span><span><b>{column.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> average</span><span><b>{column.median.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> median</span></>}</div><div className="profile-meter"><i style={{ width: `${column.completeness}%` }} /></div></article>)}</div></section>
+            <section className="column-section">
+              <div className="analysis-heading">
+                <div><span className="section-kicker">COLUMN PROFILE</span><h3>Know what each field contains</h3></div>
+                <div className="profile-actions">
+                  <button className="report-button" type="button" aria-pressed={showIncompleteColumns} onClick={() => setShowIncompleteColumns((current) => !current)}>{showIncompleteColumns ? 'Show all columns' : 'Show incomplete only'}</button>
+                  <button className="report-button" type="button" onClick={downloadColumnReport}>Download report</button>
+                </div>
+              </div>
+              <div className="profile-grid">
+                {displayedColumnProfiles.map((column) => <article className="profile-card" key={column.header}><div className="profile-title"><strong>{column.header}</strong><span>{column.type}</span></div><div className="profile-stats"><span><b>{column.filled.toLocaleString()}</b> filled</span><span><b>{column.distinct.toLocaleString()}</b> unique</span><span><b>{column.missing.toLocaleString()}</b> empty</span><span><b>{column.completeness.toLocaleString(undefined, { maximumFractionDigits: 1 })}%</b> complete</span>{column.average !== null && <><span><b>{column.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> min</span><span><b>{column.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> max</span><span><b>{column.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> average</span><span><b>{column.median.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> median</span></>}</div><div className="profile-meter"><i style={{ width: `${column.completeness}%` }} /></div></article>)}
+                {displayedColumnProfiles.length === 0 && <p className="profile-empty">Every column is complete. No columns have missing values.</p>}
+              </div>
+            </section>
 
             <div className="insight-grid" aria-label="Dataset quality summary">
               <article className="insight-card"><span className="insight-label">TOTAL RECORDS</span><strong>{preview.rowCount.toLocaleString()}</strong><span className="insight-caption">rows in your file</span><span className="insight-icon purple">▤</span></article>
