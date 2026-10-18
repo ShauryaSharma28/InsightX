@@ -3,10 +3,31 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import sampleCsv from '../../sample-sales.csv?raw';
 import './App.css';
 
+function detectCsvDelimiter(text) {
+  const delimiters = [',', ';', '\t'];
+  const counts = new Map(delimiters.map((delimiter) => [delimiter, 0]));
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"') {
+      if (quoted && text[index + 1] === '"') index += 1;
+      else quoted = !quoted;
+    } else if (!quoted && (character === '\n' || character === '\r')) {
+      break;
+    } else if (!quoted && counts.has(character)) {
+      counts.set(character, counts.get(character) + 1);
+    }
+  }
+
+  return delimiters.reduce((best, delimiter) => counts.get(delimiter) > counts.get(best) ? delimiter : best, ',');
+}
+
 function parseCsv(text) {
   // UTF-8 CSV exports often start with a BOM, which otherwise becomes part of
   // the first column name.
   text = text.replace(/^\uFEFF/, '');
+  const delimiter = detectCsvDelimiter(text);
   const rows = [];
   let row = [];
   let cell = '';
@@ -22,7 +43,7 @@ function parseCsv(text) {
       } else {
         quoted = !quoted;
       }
-    } else if (character === ',' && !quoted) {
+    } else if (character === delimiter && !quoted) {
       row.push(cell);
       cell = '';
     } else if ((character === '\n' || character === '\r') && !quoted) {
