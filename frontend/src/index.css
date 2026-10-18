@@ -1,7 +1,7 @@
 :root {
   font-family: 'DM Sans', 'Avenir Next', Avenir, ui-sans-serif, system-ui, sans-serif;
-  color: #263d33;
-  background: #f7f8f4;
+  color: #e4eadf;
+  background: #0b100e;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -15,4 +15,8 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input { font: inherit; }
-::selection { background: #dce9c5; color: #1d382e; }
+::selection { background: #425a3d; color: #f4f7ed; }
+
+html { color-scheme: dark; scroll-behavior: smooth; }
+body { background: #0b100e; }
+button, input, select { color-scheme: dark; }
