@@ -289,6 +289,7 @@ function App() {
       header,
       filled: filled.length,
       missing: values.length - filled.length,
+      completeness: values.length ? (filled.length / values.length) * 100 : 0,
       distinct,
       type: isNumeric ? 'Number' : 'Text',
       min: numericStats?.min ?? null,
@@ -325,8 +326,8 @@ function App() {
   function downloadColumnReport() {
     if (!preview) return;
     const report = [
-      ['Column', 'Type', 'Filled', 'Missing', 'Distinct values', 'Minimum', 'Maximum', 'Average', 'Median'],
-      ...columnProfiles.map((column) => [column.header, column.type, column.filled, column.missing, column.distinct, column.min ?? '', column.max ?? '', column.average ?? '', column.median ?? '']),
+      ['Column', 'Type', 'Filled', 'Missing', 'Completeness (%)', 'Distinct values', 'Minimum', 'Maximum', 'Average', 'Median'],
+      ...columnProfiles.map((column) => [column.header, column.type, column.filled, column.missing, column.completeness, column.distinct, column.min ?? '', column.max ?? '', column.average ?? '', column.median ?? '']),
     ];
     const content = report.map((row) => row.map(csvCell).join(',')).join('\r\n');
     downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-column-report.csv`, content);
@@ -412,7 +413,7 @@ function App() {
               </section>
             </div>
 
-            <section className="column-section"><div className="analysis-heading"><div><span className="section-kicker">COLUMN PROFILE</span><h3>Know what each field contains</h3></div><button className="report-button" type="button" onClick={downloadColumnReport}>↓ Download report</button></div><div className="profile-grid">{columnProfiles.map((column) => <article className="profile-card" key={column.header}><div className="profile-title"><strong>{column.header}</strong><span>{column.type}</span></div><div className="profile-stats"><span><b>{column.filled.toLocaleString()}</b> filled</span><span><b>{column.distinct.toLocaleString()}</b> unique</span><span><b>{column.missing.toLocaleString()}</b> empty</span>{column.average !== null && <><span><b>{column.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> min</span><span><b>{column.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> max</span><span><b>{column.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> average</span><span><b>{column.median.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> median</span></>}</div><div className="profile-meter"><i style={{ width: `${preview.rowCount ? (column.filled / preview.rowCount) * 100 : 0}%` }} /></div></article>)}</div></section>
+            <section className="column-section"><div className="analysis-heading"><div><span className="section-kicker">COLUMN PROFILE</span><h3>Know what each field contains</h3></div><button className="report-button" type="button" onClick={downloadColumnReport}>↓ Download report</button></div><div className="profile-grid">{columnProfiles.map((column) => <article className="profile-card" key={column.header}><div className="profile-title"><strong>{column.header}</strong><span>{column.type}</span></div><div className="profile-stats"><span><b>{column.filled.toLocaleString()}</b> filled</span><span><b>{column.distinct.toLocaleString()}</b> unique</span><span><b>{column.missing.toLocaleString()}</b> empty</span><span><b>{column.completeness.toLocaleString(undefined, { maximumFractionDigits: 1 })}%</b> complete</span>{column.average !== null && <><span><b>{column.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> min</span><span><b>{column.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> max</span><span><b>{column.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> average</span><span><b>{column.median.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> median</span></>}</div><div className="profile-meter"><i style={{ width: `${column.completeness}%` }} /></div></article>)}</div></section>
 
             <div className="insight-grid" aria-label="Dataset quality summary">
               <article className="insight-card"><span className="insight-label">TOTAL RECORDS</span><strong>{preview.rowCount.toLocaleString()}</strong><span className="insight-caption">rows in your file</span><span className="insight-icon purple">▤</span></article>
