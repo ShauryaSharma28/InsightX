@@ -436,10 +436,10 @@ function App() {
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
               <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records <span>·</span> {formatFileSize(preview.fileSize)}</p></div>
               <button className="download-button export-json-button" type="button" onClick={downloadJson} disabled={exportRows.length === 0}>
-                Export JSON
+                Export {removeDuplicates ? 'cleaned JSON' : 'JSON'} ({exportRows.length.toLocaleString()})
               </button>
               <button className="download-button" type="button" onClick={downloadCsv} disabled={exportRows.length === 0}>
-                <span aria-hidden="true">↓</span> Export {removeDuplicates ? 'cleaned CSV' : 'CSV'}
+                <span aria-hidden="true">↓</span> Export {removeDuplicates ? 'cleaned CSV' : 'CSV'} ({exportRows.length.toLocaleString()})
               </button>
             </div>
 
