@@ -46,6 +46,18 @@ function csvCell(value) {
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unit]}`;
+}
+
 function downloadCsvFile(fileName, content) {
   const csv = content.startsWith('\uFEFF') ? content : `\uFEFF${content}`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -73,14 +85,14 @@ function App() {
   const [filterOperator, setFilterOperator] = useState('contains');
   const [filterValue, setFilterValue] = useState('');
 
-  function setDataset(fileName, rows) {
+  function setDataset(fileName, rows, fileSize) {
     const headers = rows[0].map((header, index) => header.trim() || `Column ${index + 1}`);
     const data = rows.slice(1);
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
     });
-    setPreview({ fileName, headers, data, rowCount: data.length });
+    setPreview({ fileName, fileSize, headers, data, rowCount: data.length });
     setVisibleColumns(headers.map((_, index) => index));
     setChartColumn(null);
     setChartGroupColumn(firstCategory < 0 ? '' : String(firstCategory));
@@ -97,7 +109,7 @@ function App() {
       if (rows.length < 2) throw new Error('Sample file is empty');
       setSearch('');
       setSort({ column: null, direction: 'asc' });
-      setDataset('sample-sales.csv', rows);
+      setDataset('sample-sales.csv', rows, new Blob([sampleCsv]).size);
     } catch {
       setError('The sample dataset could not be loaded. Try downloading the CSV instead.');
     }
@@ -122,7 +134,7 @@ function App() {
         return;
       }
 
-      setDataset(file.name, rows);
+      setDataset(file.name, rows, file.size);
     } catch {
       setError('The file could not be read. Try choosing it again.');
     }
@@ -316,7 +328,7 @@ function App() {
           <div className="dataset-area" aria-live="polite">
             <div className="dataset-title-row">
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
-              <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records</p></div>
+              <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records <span>·</span> {formatFileSize(preview.fileSize)}</p></div>
               <button className="download-button" type="button" onClick={downloadCsv} disabled={exportRows.length === 0}>
                 <span aria-hidden="true">↓</span> Export {removeDuplicates ? 'cleaned CSV' : 'CSV'}
               </button>
