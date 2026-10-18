@@ -138,7 +138,10 @@ export function filterRows(rows, {
       : filterColumn === '' || target === '' || (() => {
         const cell = (values[Number(filterColumn)] ?? '').trim();
         if (filterOperator === 'contains') return cell.toLowerCase().includes(target.toLowerCase());
+        if (filterOperator === 'startsWith') return cell.toLowerCase().startsWith(target.toLowerCase());
+        if (filterOperator === 'endsWith') return cell.toLowerCase().endsWith(target.toLowerCase());
         if (filterOperator === 'equals') return cell.toLowerCase() === target.toLowerCase();
+        if (filterOperator === 'notEquals') return cell.toLowerCase() !== target.toLowerCase();
         const number = Number(cell);
         const comparison = Number(target);
         if (!Number.isFinite(number) || !Number.isFinite(comparison)) return false;
