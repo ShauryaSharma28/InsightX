@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
-import { countDuplicateRows, filterRows, getColumnProfiles, normalizeRows, parseCsv, parseJson, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
+import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJson, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
 import './App.css';
 
 function csvCell(value) {
@@ -119,8 +119,8 @@ function App() {
       }
 
       setDataset(file.name, rows, file.size);
-    } catch {
-      setError('The file could not be read. Try choosing it again.');
+    } catch (cause) {
+      setError(getImportErrorMessage(cause, extension));
     }
   }
 

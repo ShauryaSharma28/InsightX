@@ -4,6 +4,7 @@ import {
   countDuplicateRows,
   filterRows,
   getColumnProfiles,
+  getImportErrorMessage,
   normalizeRows,
   parseCsv,
   parseJson,
@@ -24,6 +25,10 @@ test('parseCsv supports tab separators and strips a UTF-8 BOM', () => {
   assert.deepEqual(parseCsv('\uFEFFName\tScore\nAda\t8'), [['Name', 'Score'], ['Ada', '8']]);
 });
 
+test('parseCsv reports the line of an unclosed quoted value', () => {
+  assert.throws(() => parseCsv('Name,Notes\nAda,"unfinished'), /CSV contains an unclosed quoted value starting on line 2/);
+});
+
 test('parseJson unions record fields and converts values to table cells', () => {
   assert.deepEqual(parseJson('[{"id":7,"label":"A","meta":{"x":1}},{"id":null,"extra":true}]'), [
     ['id', 'label', 'meta', 'extra'],
@@ -35,6 +40,12 @@ test('parseJson unions record fields and converts values to table cells', () => 
 test('parseJson rejects empty arrays and non-object records', () => {
   assert.throws(() => parseJson('[]'), /non-empty array of objects/);
   assert.throws(() => parseJson('[1]'), /non-empty array of objects/);
+});
+
+test('getImportErrorMessage distinguishes malformed JSON and unsupported file content', () => {
+  assert.match(getImportErrorMessage(new SyntaxError('Unexpected token'), 'json'), /JSON file is malformed/);
+  assert.equal(getImportErrorMessage(new Error('JSON must contain a non-empty array of objects'), 'json'), 'JSON must contain a non-empty array of objects');
+  assert.match(getImportErrorMessage(new Error('permission denied'), 'csv'), /file could not be read/);
 });
 
 test('normalizeRows retains extra cells and pads short rows', () => {

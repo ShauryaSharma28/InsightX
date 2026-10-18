@@ -27,6 +27,8 @@ export function parseCsv(text) {
   let row = [];
   let cell = '';
   let quoted = false;
+  let lineNumber = 1;
+  let quoteStartLine = null;
 
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
@@ -37,6 +39,7 @@ export function parseCsv(text) {
         index += 1;
       } else {
         quoted = !quoted;
+        if (quoted) quoteStartLine = lineNumber;
       }
     } else if (character === delimiter && !quoted) {
       row.push(cell);
@@ -47,11 +50,14 @@ export function parseCsv(text) {
       if (row.some((value) => value.trim() !== '')) rows.push(row);
       row = [];
       cell = '';
+      lineNumber += 1;
     } else {
       cell += character;
+      if (character === '\n' || (character === '\r' && text[index + 1] !== '\n')) lineNumber += 1;
     }
   }
 
+  if (quoted) throw new Error(`CSV contains an unclosed quoted value starting on line ${quoteStartLine}.`);
   row.push(cell);
   if (row.some((value) => value.trim() !== '')) rows.push(row);
   return rows;
@@ -75,6 +81,14 @@ export function parseJson(text) {
       return typeof value === 'object' ? JSON.stringify(value) : String(value);
     })),
   ];
+}
+
+export function getImportErrorMessage(error, extension) {
+  if (extension === 'json' && error instanceof SyntaxError) {
+    return 'This JSON file is malformed. Check its brackets, commas, and quoted strings.';
+  }
+  if (error instanceof Error && /^(CSV|JSON)\b/.test(error.message)) return error.message;
+  return 'The file could not be read. Try choosing it again.';
 }
 
 export function uniqueHeaders(headers) {
