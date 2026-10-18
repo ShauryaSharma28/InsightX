@@ -371,6 +371,11 @@ function App() {
           <span className="brand-mark" aria-hidden="true"><span /><span /><span /></span>
           <span>insight<span className="brand-light">x</span></span>
         </a>
+        <nav className="top-nav" aria-label="Main navigation">
+          <a href="#workspace">Workspace</a>
+          <a href="#insights">Insights</a>
+          <a href="#rows">Rows</a>
+        </nav>
         <div className="local-status"><span /> PRIVATE WORKSPACE</div>
       </header>
 
@@ -387,7 +392,7 @@ function App() {
         </div>
       </section>
 
-      <section className="workspace" aria-labelledby="upload-title">
+      <section className="workspace" id="workspace" aria-labelledby="upload-title">
         <div className="workspace-heading">
           <div><span className="section-kicker">01 <i /> START WITH A DATASET</span><h2 id="upload-title">Bring your data in</h2></div>
           <div className="csv-pill"><span>↳</span> CSV / JSON</div>
@@ -412,7 +417,7 @@ function App() {
         {error && <p className="error-message" role="alert">{error}</p>}
 
         {preview && (
-          <div className="dataset-area" aria-live="polite">
+          <div className="dataset-area" id="insights" aria-live="polite">
             <div className="dataset-title-row">
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
               <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records <span>·</span> {formatFileSize(preview.fileSize)}</p></div>
@@ -475,7 +480,7 @@ function App() {
               <article className="insight-card"><span className="insight-label">DUPLICATE ROWS</span><strong>{duplicateRows.toLocaleString()}</strong><span className="insight-caption">{duplicateRows === 0 ? 'no repeats found' : 'repeated records'}</span><span className="insight-icon green">⧉</span></article>
             </div>
 
-            <div className="table-heading">
+            <div className="table-heading" id="rows">
               <div><span className="section-kicker">02 <i /> EXPLORE YOUR DATA</span><h3>Rows &amp; columns</h3></div>
               <div className="search-control">
                 <span aria-hidden="true">⌕</span>
