@@ -41,6 +41,26 @@ function parseCsv(text) {
   return rows;
 }
 
+function parseJson(text) {
+  const records = JSON.parse(text);
+  if (!Array.isArray(records) || records.length === 0 || records.some(
+    (record) => !record || typeof record !== 'object' || Array.isArray(record),
+  )) {
+    throw new Error('JSON must contain a non-empty array of objects');
+  }
+
+  const headers = [...new Set(records.flatMap((record) => Object.keys(record)))];
+  if (headers.length === 0) throw new Error('JSON records do not contain any fields');
+  return [
+    headers,
+    ...records.map((record) => headers.map((header) => {
+      const value = record[header];
+      if (value == null) return '';
+      return typeof value === 'object' ? JSON.stringify(value) : String(value);
+    })),
+  ];
+}
+
 function csvCell(value) {
   const text = value ?? '';
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -122,15 +142,17 @@ function App() {
     setSort({ column: null, direction: 'asc' });
     if (!file) return;
 
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setError('That file type is not supported. Choose a CSV file.');
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension !== 'csv' && extension !== 'json') {
+      setError('That file type is not supported. Choose a CSV or JSON file.');
       return;
     }
 
     try {
-      const rows = parseCsv(await file.text());
+      const fileText = await file.text();
+      const rows = extension === 'json' ? parseJson(fileText) : parseCsv(fileText);
       if (rows.length < 2) {
-        setError('This file needs a header row and at least one data row.');
+        setError('This file needs field names and at least one data row.');
         return;
       }
 
@@ -292,7 +314,7 @@ function App() {
         <div className="intro-copy">
           <span className="eyebrow">YOUR DATA, IN A NEW LIGHT</span>
           <h1>Make sense<br />of <em>every row.</em></h1>
-          <p>A calm, clear space to explore your spreadsheets.<br className="desktop-break" /> Drop in a CSV and see what’s inside.</p>
+          <p>A calm, clear space to explore your data.<br className="desktop-break" /> Drop in a CSV or JSON file and see what’s inside.</p>
         </div>
         <div className="intro-art" aria-hidden="true">
           <div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" />
@@ -304,22 +326,22 @@ function App() {
       <section className="workspace" aria-labelledby="upload-title">
         <div className="workspace-heading">
           <div><span className="section-kicker">01 <i /> START WITH A DATASET</span><h2 id="upload-title">Bring your data in</h2></div>
-          <div className="csv-pill"><span>↳</span> CSV FILE</div>
+          <div className="csv-pill"><span>↳</span> CSV / JSON</div>
         </div>
 
         <label
           className={`upload-control${isDragging ? ' is-dragging' : ''}`}
-          htmlFor="csv-file"
+          htmlFor="dataset-file"
           onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsDragging(false); }}
           onDrop={handleDrop}
         >
           <span className="upload-icon" aria-hidden="true"><span>↑</span></span>
-          <span className="upload-copy"><strong>Drop your CSV here</strong><small>or browse files from your device</small></span>
+          <span className="upload-copy"><strong>Drop your CSV or JSON here</strong><small>or browse files from your device</small></span>
           <span className="browse-button">Choose a file <span aria-hidden="true">↗</span></span>
-          <input id="csv-file" type="file" accept=".csv,text/csv" onChange={handleFileChange} />
+          <input id="dataset-file" type="file" accept=".csv,.json,text/csv,application/json" onChange={handleFileChange} />
         </label>
-        <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded.</div>
+        <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded. CSV and JSON files are supported.</div>
         <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 62-row sample <span>↗</span></button><button className="sample-download" type="button" onClick={downloadSampleCsv}>Download sample CSV ↓</button></div>
 
         {error && <p className="error-message" role="alert">{error}</p>}

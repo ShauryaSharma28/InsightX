@@ -1,12 +1,12 @@
 # InsightX
 
-InsightX is a browser based workspace for exploring and cleaning CSV datasets.
+InsightX is a browser based workspace for exploring and cleaning CSV and JSON datasets.
 
 **Live website:** [shubham01-shubh.github.io/InsightX](https://shubham01-shubh.github.io/InsightX/)
 
 ## Features
 
-- Open a CSV from your device or explore the 62-row sales sample in the repository root. It includes multiple products, regions, and statuses, plus missing values and duplicate records for trying the data quality tools.
+- Open a CSV or a JSON array of records from your device, or explore the 62-row sales sample in the repository root. It includes multiple products, regions, and statuses, plus missing values and duplicate records for trying the data quality tools.
 - Keep data on your device while you search, sort, filter, and paginate rows.
 - Choose visible columns and export the current view as a cleaned CSV.
 - Review missing cells, duplicate rows, and per-column data quality.
