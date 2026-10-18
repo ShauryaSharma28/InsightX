@@ -208,6 +208,8 @@ td { color: #d0d9cf; }
 .profile-meter { background: #29352b; }
 .profile-meter i { background: #a7c574; }
 .table-controls, .table-control-actions label { color: #a0ada0; }
+.table-controls .copy-view-button { padding: 5px 8px; border: 1px solid #35443a; border-radius: 5px; background: #18221c; color: #c5d1c1; }
+.copy-status { margin: 0 0 8px; color: #b4d27c; font-size: 9px; }
 .filter-toolbar { border-color: #29362e; background: #111814; }
 .column-picker-menu { border-color: #35443a; background: #18221c; box-shadow: 0 16px 35px rgb(0 0 0 / 35%); }
 .column-picker-menu label { color: #d0dbce; }

@@ -46,6 +46,7 @@ function App() {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ column: null, direction: 'asc' });
   const [isDragging, setIsDragging] = useState(false);
@@ -68,6 +69,7 @@ function App() {
 
   function setDataset(fileName, rows, fileSize) {
     const { headers, data } = normalizeRows(rows);
+    setCopyStatus('');
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
@@ -309,6 +311,22 @@ function App() {
     image.src = svgUrl;
   }
 
+  async function copyCurrentView() {
+    const cellText = (value) => String(value ?? '').replace(/[\t\r\n]+/g, ' ');
+    const rows = [
+      selectedColumns.map((index) => preview.headers[index]),
+      ...sortedData.map((row) => selectedColumns.map((index) => row[index] ?? '')),
+    ];
+    const clipboardText = rows.map((row) => row.map(cellText).join('\t')).join('\n');
+
+    try {
+      await navigator.clipboard.writeText(clipboardText);
+      setCopyStatus(`Copied ${sortedData.length.toLocaleString()} rows`);
+    } catch {
+      setCopyStatus('Clipboard access is unavailable in this browser');
+    }
+  }
+
   function downloadColumnReport() {
     if (!preview) return;
     const report = [
@@ -446,7 +464,8 @@ function App() {
               <label className="filter-value">Value<input value={filterValue} disabled={filterOperator === 'empty' || filterOperator === 'notEmpty'} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder={filterOperator === 'empty' || filterOperator === 'notEmpty' ? 'Not needed' : 'Type a value'} /></label>
               <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
             </div>
-            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
+            {copyStatus && <p className="copy-status" role="status">{copyStatus}</p>}
 
             <div className="table-scroll">
               <table>
