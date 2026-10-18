@@ -118,6 +118,7 @@ function App() {
   const [sort, setSort] = useState({ column: null, direction: 'asc' });
   const [isDragging, setIsDragging] = useState(false);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(12);
   const [chartColumn, setChartColumn] = useState(null);
   const [chartGroupColumn, setChartGroupColumn] = useState('');
   const [chartAggregate, setChartAggregate] = useState('sum');
@@ -270,7 +271,6 @@ function App() {
       value: chartAggregate === 'average' ? group.value / group.count : group.value,
     })).sort((left, right) => right.value - left.value).slice(0, 12);
   })();
-  const pageSize = 12;
   const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
   const visibleData = sortedData.slice(page * pageSize, (page + 1) * pageSize);
   const columnProfiles = preview?.headers.map((header, index) => {
@@ -435,7 +435,7 @@ function App() {
               <label className="filter-value">Value<input value={filterValue} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder="Type a value" /></label>
               <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
             </div>
-            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
 
             <div className="table-scroll">
               <table>
