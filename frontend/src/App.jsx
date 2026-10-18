@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
 import './App.css';
@@ -221,7 +221,7 @@ function App() {
   }
 
   const searchTerm = search.trim().toLowerCase();
-  const filteredData = preview?.data.filter((values) =>
+  const filteredData = useMemo(() => preview?.data.filter((values) =>
     values.some((value) => (value ?? '').toLowerCase().includes(searchTerm)) &&
     (!hideEmpty || values.every((value) => (value ?? '').trim() !== '')) &&
     (filterOperator === 'empty' || filterOperator === 'notEmpty'
@@ -241,8 +241,8 @@ function App() {
         if (!Number.isFinite(number) || !Number.isFinite(comparison)) return false;
         return filterOperator === 'greater' ? number > comparison : number < comparison;
       })()),
-  ) ?? [];
-  const sortedData = sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
+  ) ?? [], [filterColumn, filterOperator, filterValue, hideEmpty, preview, searchTerm]);
+  const sortedData = useMemo(() => sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
     const rightValue = (right[sort.column] ?? '').trim();
     const leftNumber = Number(leftValue);
@@ -252,32 +252,32 @@ function App() {
       ? leftNumber - rightNumber
       : leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' });
     return sort.direction === 'asc' ? comparison : -comparison;
-  });
+  }), [filteredData, sort]);
 
-  const missingCells = preview?.data.reduce((count, values) => count + preview.headers.reduce(
+  const missingCells = useMemo(() => preview?.data.reduce((count, values) => count + preview.headers.reduce(
     (rowCount, _, index) => rowCount + ((values[index] ?? '').trim() === '' ? 1 : 0), 0,
-  ), 0) ?? 0;
-  const duplicateRows = preview ? preview.data.length - new Set(
+  ), 0) ?? 0, [preview]);
+  const duplicateRows = useMemo(() => preview ? preview.data.length - new Set(
     preview.data.map((values) => preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000')),
-  ).size : 0;
-  const duplicateRowsInView = preview ? sortedData.length - new Set(
+  ).size : 0, [preview]);
+  const duplicateRowsInView = useMemo(() => preview ? sortedData.length - new Set(
     sortedData.map((values) => preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000')),
-  ).size : 0;
-  const exportRows = removeDuplicates && preview
+  ).size : 0, [preview, sortedData]);
+  const exportRows = useMemo(() => removeDuplicates && preview
     ? [...new Map(sortedData.map((values) => [preview.headers.map((_, index) => (values[index] ?? '').trim()).join('\u0000'), values])).values()]
-    : sortedData;
-  const selectedColumns = preview?.headers.map((_, index) => index).filter((index) => visibleColumns.includes(index)) ?? [];
-  const numericColumns = preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
+    : sortedData, [preview, removeDuplicates, sortedData]);
+  const selectedColumns = useMemo(() => preview?.headers.map((_, index) => index).filter((index) => visibleColumns.includes(index)) ?? [], [preview, visibleColumns]);
+  const numericColumns = useMemo(() => preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
     const values = preview.data.map((row) => Number((row[index] ?? '').trim())).filter(Number.isFinite);
     return values.length > 0 && values.length >= preview.data.filter((row) => (row[index] ?? '').trim()).length * 0.7;
-  }) ?? [];
-  const categoricalColumns = preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
+  }) ?? [], [preview]);
+  const categoricalColumns = useMemo(() => preview?.headers.map((header, index) => ({ header, index })).filter(({ index }) => {
     const values = preview.data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
     const distinct = new Set(values).size;
     return distinct > 1 && distinct < values.length && distinct <= 24;
-  }) ?? [];
+  }) ?? [], [preview]);
   const activeChartColumn = chartColumn ?? numericColumns[0]?.index;
-  const chartData = (() => {
+  const chartData = useMemo(() => {
     if (!preview || activeChartColumn === undefined) return [];
     if (chartGroupColumn === '') return filteredData.map((row, index) => ({ row, index }))
       .filter(({ row }) => {
@@ -303,10 +303,10 @@ function App() {
       label: group.label,
       value: chartAggregate === 'average' ? group.value / group.count : group.value,
     })).sort((left, right) => right.value - left.value).slice(0, 12);
-  })();
+  }, [activeChartColumn, chartAggregate, chartGroupColumn, filteredData, preview]);
   const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
   const visibleData = sortedData.slice(page * pageSize, (page + 1) * pageSize);
-  const columnProfiles = preview?.headers.map((header, index) => {
+  const columnProfiles = useMemo(() => preview?.headers.map((header, index) => {
     const values = preview.data.map((row) => (row[index] ?? '').trim());
     const filled = values.filter(Boolean);
     const nums = filled.map(Number).filter(Number.isFinite);
@@ -332,10 +332,10 @@ function App() {
         ? (sortedNums[Math.floor((sortedNums.length - 1) / 2)] + sortedNums[Math.ceil((sortedNums.length - 1) / 2)]) / 2
         : null,
     };
-  }) ?? [];
-  const displayedColumnProfiles = showIncompleteColumns
+  }) ?? [], [preview]);
+  const displayedColumnProfiles = useMemo(() => showIncompleteColumns
     ? columnProfiles.filter((column) => column.missing > 0)
-    : columnProfiles;
+    : columnProfiles, [columnProfiles, showIncompleteColumns]);
 
   function handleSort(column) {
     setSort((current) => ({
