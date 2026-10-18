@@ -17,7 +17,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV and JSON da
 - Preview exact value replacements and optionally apply them to exported rows.
 - Filter the column profile to focus on fields with missing values.
 - Compare numeric measures across the matching rows and categories using totals or averages.
-- Export the values currently shown in the chart as a CSV file.
+- Export the current chart as CSV data or a PNG image.
 - Download a column report with types, completeness, distinct counts, numeric ranges, averages, and medians.
 
 ## Project structure

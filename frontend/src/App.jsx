@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
 import { countDuplicateRows, filterRows, getColumnProfiles, normalizeRows, parseCsv, parseJson, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
@@ -41,6 +41,7 @@ function downloadJsonFile(fileName, records) {
 }
 
 function App() {
+  const chartRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -250,6 +251,51 @@ function App() {
     downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-chart-data.csv`, content);
   }
 
+  function downloadChartPng() {
+    const svg = chartRef.current?.querySelector('svg');
+    if (!svg) return;
+
+    const { width, height } = svg.getBoundingClientRect();
+    if (!width || !height) return;
+
+    const chartSvg = svg.cloneNode(true);
+    chartSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    chartSvg.setAttribute('width', String(width));
+    chartSvg.setAttribute('height', String(height));
+    const svgUrl = URL.createObjectURL(new Blob(
+      [new XMLSerializer().serializeToString(chartSvg)],
+      { type: 'image/svg+xml;charset=utf-8' },
+    ));
+    const image = new Image();
+    image.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const context = canvas.getContext('2d');
+      if (!context) {
+        URL.revokeObjectURL(svgUrl);
+        return;
+      }
+
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(svgUrl);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const pngUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = pngUrl;
+        link.download = `${preview.fileName.replace(/\.(csv|json)$/i, '')}-chart.png`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
+      }, 'image/png');
+    };
+    image.onerror = () => URL.revokeObjectURL(svgUrl);
+    image.src = svgUrl;
+  }
+
   function downloadColumnReport() {
     if (!preview) return;
     const report = [
@@ -331,8 +377,8 @@ function App() {
                   <label>GROUP BY<select aria-label="Group chart by" value={chartGroupColumn} onChange={(event) => setChartGroupColumn(event.target.value)}><option value="">Each row</option>{categoricalColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>
                   {chartGroupColumn !== '' && <label>CALCULATION<select aria-label="Choose chart calculation" value={chartAggregate} onChange={(event) => setChartAggregate(event.target.value)}><option value="sum">Total</option><option value="average">Average</option></select></label>}
                 </div>
-                {chartData.length ? <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#edf0ea" /><XAxis dataKey="label" tick={{ fill: '#929b91', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#929b91', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip cursor={{ fill: '#f6f8f1' }} contentStyle={{ border: '1px solid #e6e9e2', borderRadius: 8, fontSize: 12 }} /><Bar dataKey="value" name={preview.headers[activeChartColumn]} fill="#8fa95d" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div> : <p className="no-chart">{numericColumns.length ? 'No matching rows with numeric values for these filters.' : 'No numeric column found. Add numeric values to create a chart.'}</p>}
-                <div className="chart-footer"><p className="chart-note">{chartGroupColumn === '' ? 'First 12 rows matching current filters' : `${chartAggregate === 'sum' ? 'Totals' : 'Averages'} across matching rows · highest values first`}</p>{chartData.length > 0 && <button className="report-button" type="button" onClick={downloadChartData}>Export chart CSV</button>}</div>
+                {chartData.length ? <div className="chart-wrap" ref={chartRef}><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#edf0ea" /><XAxis dataKey="label" tick={{ fill: '#929b91', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#929b91', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip cursor={{ fill: '#f6f8f1' }} contentStyle={{ border: '1px solid #e6e9e2', borderRadius: 8, fontSize: 12 }} /><Bar dataKey="value" name={preview.headers[activeChartColumn]} fill="#8fa95d" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div> : <p className="no-chart">{numericColumns.length ? 'No matching rows with numeric values for these filters.' : 'No numeric column found. Add numeric values to create a chart.'}</p>}
+                <div className="chart-footer"><p className="chart-note">{chartGroupColumn === '' ? 'First 12 rows matching current filters' : `${chartAggregate === 'sum' ? 'Totals' : 'Averages'} across matching rows · highest values first`}</p>{chartData.length > 0 && <div className="chart-export-actions"><button className="report-button" type="button" onClick={downloadChartData}>Export chart CSV</button><button className="report-button" type="button" onClick={downloadChartPng}>Export chart PNG</button></div>}</div>
               </section>
               <section className="analysis-card quality-card"><div className="analysis-heading"><div><span className="section-kicker">DATA HYGIENE</span><h3>Clean up your export</h3></div></div>
                 <label className="toggle-row"><span><strong>Hide incomplete rows</strong><small>Exclude rows with empty cells from the table</small></span><input type="checkbox" checked={hideEmpty} onChange={(event) => { setHideEmpty(event.target.checked); setPage(0); }} /></label>
