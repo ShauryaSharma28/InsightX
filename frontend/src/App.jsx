@@ -98,10 +98,7 @@ function App() {
   }
 
   async function loadFile(file) {
-    setPreview(null);
     setError('');
-    setSearch('');
-    setSort({ column: null, direction: 'asc' });
     if (!file) return;
 
     const extension = file.name.split('.').pop()?.toLowerCase();
@@ -118,6 +115,8 @@ function App() {
         return;
       }
 
+      setSearch('');
+      setSort({ column: null, direction: 'asc' });
       setDataset(file.name, rows, file.size);
     } catch (cause) {
       setError(getImportErrorMessage(cause, extension));
