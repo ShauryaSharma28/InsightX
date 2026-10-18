@@ -178,10 +178,16 @@ function App() {
   const activeChartColumn = chartColumn ?? numericColumns[0]?.index;
   const chartData = (() => {
     if (!preview || activeChartColumn === undefined) return [];
-    if (chartGroupColumn === '') return preview.data.slice(0, 12).map((row, index) => ({
-      label: row.find((value, columnIndex) => columnIndex !== activeChartColumn && (value ?? '').trim()) || `Row ${index + 1}`,
-      value: Number((row[activeChartColumn] ?? '').trim()) || 0,
-    }));
+    if (chartGroupColumn === '') return preview.data.map((row, index) => ({ row, index }))
+      .filter(({ row }) => {
+        const value = (row[activeChartColumn] ?? '').trim();
+        return value !== '' && Number.isFinite(Number(value));
+      })
+      .slice(0, 12)
+      .map(({ row, index }) => ({
+        label: row.find((value, columnIndex) => columnIndex !== activeChartColumn && (value ?? '').trim()) || `Row ${index + 1}`,
+        value: Number((row[activeChartColumn] ?? '').trim()),
+      }));
     const groups = new Map();
     preview.data.forEach((row) => {
       const value = Number((row[activeChartColumn] ?? '').trim());
