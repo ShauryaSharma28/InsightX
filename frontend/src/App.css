@@ -44,6 +44,7 @@
 .privacy-note { display: flex; align-items: center; gap: 6px; margin: 9px 0 0 4px; color: #a2aaa1; font-size: 9px; }.privacy-note span { color: #829c50; font-size: 12px; }
 .sample-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-left: 4px; }.sample-button { margin: 10px 0 0; padding: 0; border: 0; background: none; color: #70894b; font-size: 10px; font-weight: 650; cursor: pointer; }.sample-button span { padding-left: 5px; }.sample-download { margin-top: 10px; padding: 0; border: 0; background: none; color: #9aa398; font-family: inherit; font-size: 9px; text-decoration: underline; text-decoration-color: #d5dccd; text-underline-offset: 3px; cursor: pointer; }
 .error-message { margin: 12px 0 0; color: #b64745; font-size: 12px; }
+.import-status { margin: 12px 0 0; color: #6f806e; font-size: 11px; }
 
 .dataset-area { margin-top: 30px; padding-top: 25px; border-top: 1px solid #edf0ea; }
 .dataset-title-row { display: flex; align-items: center; gap: 11px; }
@@ -159,6 +160,7 @@ body {
 .browse-button:hover, .report-button:hover, .pagination button:not(:disabled):hover { border-color: #718d56; background: #202c22; }
 .privacy-note span, .csv-pill span, .download-button span { color: var(--accent-strong); }
 .error-message { color: #ff9b91; }
+.import-status { color: #b4d27c; }
 .dataset-area { border-color: var(--line-soft); }
 .dataset-name p, .dataset-name p span { color: #93a095; }
 .download-button { background: #395333; color: #f0f5e9; }

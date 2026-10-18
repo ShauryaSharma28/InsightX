@@ -42,8 +42,10 @@ function downloadJsonFile(fileName, records) {
 
 function App() {
   const chartRef = useRef(null);
+  const importRequest = useRef(0);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ column: null, direction: 'asc' });
   const [isDragging, setIsDragging] = useState(false);
@@ -85,6 +87,8 @@ function App() {
   }
 
   function loadSampleDataset() {
+    importRequest.current += 1;
+    setIsLoading(false);
     setError('');
     try {
       const rows = parseCsv(sampleCsv);
@@ -98,17 +102,25 @@ function App() {
   }
 
   async function loadFile(file) {
+    const requestId = importRequest.current + 1;
+    importRequest.current = requestId;
     setError('');
-    if (!file) return;
+    if (!file) {
+      setIsLoading(false);
+      return;
+    }
 
     const extension = file.name.split('.').pop()?.toLowerCase();
     if (extension !== 'csv' && extension !== 'json') {
+      setIsLoading(false);
       setError('That file type is not supported. Choose a CSV or JSON file.');
       return;
     }
 
+    setIsLoading(true);
     try {
       const fileText = await file.text();
+      if (requestId !== importRequest.current) return;
       const rows = extension === 'json' ? parseJson(fileText) : parseCsv(fileText);
       if (rows.length < 2) {
         setError('This file needs field names and at least one data row.');
@@ -119,7 +131,9 @@ function App() {
       setSort({ column: null, direction: 'asc' });
       setDataset(file.name, rows, file.size);
     } catch (cause) {
-      setError(getImportErrorMessage(cause, extension));
+      if (requestId === importRequest.current) setError(getImportErrorMessage(cause, extension));
+    } finally {
+      if (requestId === importRequest.current) setIsLoading(false);
     }
   }
 
@@ -353,6 +367,7 @@ function App() {
         <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded. CSV and JSON files are supported.</div>
         <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 62-row sample <span>↗</span></button><button className="sample-download" type="button" onClick={downloadSampleCsv}>Download sample CSV ↓</button></div>
 
+        {isLoading && <p className="import-status" role="status">Reading your file…</p>}
         {error && <p className="error-message" role="alert">{error}</p>}
 
         {preview && (
