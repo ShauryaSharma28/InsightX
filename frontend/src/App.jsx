@@ -46,6 +46,7 @@ function downloadJsonFile(fileName, records) {
 
 function App() {
   const chartRef = useRef(null);
+  const searchInputRef = useRef(null);
   const importRequest = useRef(0);
   const nextFilterId = useRef(2);
   const [preview, setPreview] = useState(null);
@@ -343,6 +344,17 @@ function App() {
     return () => window.removeEventListener('keydown', handleUndoShortcut);
   }, [editHistory, editingCell]);
 
+  useEffect(() => {
+    function handleSearchShortcut(event) {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.target instanceof HTMLElement && event.target.matches('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    }
+    window.addEventListener('keydown', handleSearchShortcut);
+    return () => window.removeEventListener('keydown', handleSearchShortcut);
+  }, []);
+
   function downloadCsv() {
     if (!preview) return;
     const content = [[...selectedColumns.map((index) => preview.headers[index])], ...downloadableRows.map((row) => selectedColumns.map((index) => row[index] ?? ''))].map((row) => row.map(csvCell).join(',')).join('\r\n');
@@ -581,7 +593,7 @@ function App() {
               <div><span className="section-kicker">02 <i /> EXPLORE YOUR DATA</span><h3>Rows &amp; columns</h3></div>
               <div className="search-control">
                 <span aria-hidden="true">⌕</span>
-                <input type="search" value={search} onKeyDown={(event) => { if (event.key === 'Escape') { setSearch(''); setPage(0); } }} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder="Search this dataset" aria-label="Search all columns" />
+                <input ref={searchInputRef} type="search" value={search} onKeyDown={(event) => { if (event.key === 'Escape') { setSearch(''); setPage(0); } }} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder="Search this dataset" aria-label="Search all columns (press / to focus)" />
                 {search && <span className="result-count">{filteredData.length} found</span>}
                 {search && <button className="clear-search" type="button" onClick={() => { setSearch(''); setPage(0); }} aria-label="Clear search">×</button>}
               </div>
