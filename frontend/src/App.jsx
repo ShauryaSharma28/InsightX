@@ -4,6 +4,9 @@ import sampleCsv from '../../sample-sales.csv?raw';
 import { aggregateDateRows, countDuplicateRows, filterRows, getAutomaticInsights, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
 import { parseExcelWorkbook } from './excelUtils.js';
 import { deleteWorkspace, getDatasetSignature, listWorkspaces, saveWorkspace } from './localWorkspaces.js';
+import AccountPanel from './AccountPanel.jsx';
+import { AccountProvider, useAccount } from './AccountContext.jsx';
+import { downloadSavedDataset } from './accountApi.js';
 import './App.css';
 
 function csvCell(value) {
@@ -47,9 +50,15 @@ function downloadJsonFile(fileName, records) {
 }
 
 function App() {
+  return <AccountProvider><WorkspaceApp /></AccountProvider>;
+}
+
+function WorkspaceApp() {
   const chartRef = useRef(null);
   const searchInputRef = useRef(null);
   const importRequest = useRef(0);
+  const selectedFileRef = useRef(null);
+  const { user, saveDataset } = useAccount();
   const nextFilterId = useRef(2);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
@@ -85,8 +94,11 @@ function App() {
   const [savedWorkspaces, setSavedWorkspaces] = useState([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState('');
   const [workspaceMessage, setWorkspaceMessage] = useState('');
+  const [accountPanelOpen, setAccountPanelOpen] = useState(false);
+  const [savedDatasetId, setSavedDatasetId] = useState(null);
+  const [isSavingToAccount, setIsSavingToAccount] = useState(false);
 
-  function setDataset(fileName, rows, fileSize, jsonRecords = null) {
+  function setDataset(fileName, rows, fileSize, jsonRecords = null, sourceFile = null, serverDatasetId = null) {
     const { headers, data } = normalizeRows(rows);
     const jsonCellMetadata = jsonRecords ? new WeakMap(data.map((row, rowIndex) => [
       row,
@@ -95,6 +107,8 @@ function App() {
         : { present: false }),
     ])) : null;
     setCopyStatus('');
+    selectedFileRef.current = sourceFile;
+    setSavedDatasetId(serverDatasetId);
     setEditingEnabled(false);
     setEditingCell(null);
     setEditHistory([]);
@@ -144,7 +158,7 @@ function App() {
     }
   }
 
-  async function loadFile(file) {
+  async function loadFile(file, serverDatasetId = null) {
     const requestId = importRequest.current + 1;
     importRequest.current = requestId;
     setError('');
@@ -179,11 +193,39 @@ function App() {
 
       setSearch('');
       setSort({ column: null, direction: 'asc' });
-      setDataset(file.name, rows, file.size, jsonDataset?.records ?? null);
+      setDataset(file.name, rows, file.size, jsonDataset?.records ?? null, file, serverDatasetId);
     } catch (cause) {
       if (requestId === importRequest.current) setError(getImportErrorMessage(cause, extension));
     } finally {
       if (requestId === importRequest.current) setIsLoading(false);
+    }
+  }
+
+  async function saveDatasetToAccount() {
+    const sourceFile = selectedFileRef.current;
+    if (!sourceFile || !preview || !user || savedDatasetId) return;
+    setIsSavingToAccount(true);
+    setWorkspaceMessage('');
+    try {
+      const saved = await saveDataset(sourceFile, workspaceName || preview.fileName.replace(/\.(csv|json|xlsx)$/i, ''));
+      setSavedDatasetId(saved.id);
+      setWorkspaceMessage(`Saved “${saved.name}” to your account.`);
+    } catch (cause) {
+      setWorkspaceMessage(cause instanceof Error ? cause.message : 'The dataset could not be saved to your account.');
+    } finally {
+      setIsSavingToAccount(false);
+    }
+  }
+
+  async function openSavedDataset(dataset) {
+    setError('');
+    try {
+      const blob = await downloadSavedDataset(dataset.id);
+      const file = new File([blob], dataset.original_filename);
+      await loadFile(file, dataset.id);
+      setAccountPanelOpen(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The saved dataset could not be opened.');
     }
   }
 
@@ -640,8 +682,15 @@ function App() {
           <a href="#insights">Insights</a>
           <a href="#rows">Rows</a>
         </nav>
-        <div className="local-status"><span /> PRIVATE WORKSPACE</div>
+        <div className="topbar-actions">
+          <div className="local-status"><span /> PRIVATE WORKSPACE</div>
+          <button className="account-button" type="button" aria-expanded={accountPanelOpen} onClick={() => setAccountPanelOpen((open) => !open)}>
+            {user ? user.username : 'Account'}
+          </button>
+        </div>
       </header>
+
+      {accountPanelOpen && <AccountPanel onOpenDataset={openSavedDataset} />}
 
       <section className="intro" id="top">
         <div className="intro-copy">
@@ -674,7 +723,7 @@ function App() {
           <span className="browse-button">Choose a file <span aria-hidden="true">↗</span></span>
           <input id="dataset-file" type="file" accept=".csv,.json,.xlsx,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFileChange} />
         </label>
-        <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded. CSV, JSON, and XLSX files are supported.</div>
+        <div className="privacy-note"><span aria-hidden="true">◈</span> Files stay on this device unless you choose “Save to account”. CSV, JSON, and XLSX files are supported.</div>
         <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 62-row sample <span>↗</span></button><button className="sample-download" type="button" onClick={downloadSampleCsv}>Download sample CSV ↓</button></div>
 
         {isLoading && <p className="import-status" role="status">Reading your file…</p>}
@@ -685,6 +734,9 @@ function App() {
             <div className="dataset-title-row">
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
               <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records <span>·</span> {formatFileSize(preview.fileSize)}</p></div>
+              {selectedFileRef.current && <button className="download-button account-save-button" type="button" onClick={user ? saveDatasetToAccount : () => setAccountPanelOpen(true)} disabled={isSavingToAccount || Boolean(savedDatasetId)}>
+                {savedDatasetId ? 'Saved to account' : isSavingToAccount ? 'Saving…' : user ? 'Save to account' : 'Sign in to save'}
+              </button>}
               <button className="download-button export-json-button" type="button" onClick={downloadJson} disabled={downloadableRows.length === 0}>
                 Export {removeDuplicates || replacementEnabled ? 'cleaned JSON' : 'JSON'} ({downloadableRows.length.toLocaleString()})
               </button>
