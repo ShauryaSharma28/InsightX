@@ -47,6 +47,7 @@ function downloadJsonFile(fileName, records) {
 function App() {
   const chartRef = useRef(null);
   const importRequest = useRef(0);
+  const nextFilterId = useRef(2);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -66,9 +67,7 @@ function App() {
   const [removeDuplicates, setRemoveDuplicates] = useState(false);
   const [trimWhitespace, setTrimWhitespace] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState([]);
-  const [filterColumn, setFilterColumn] = useState('');
-  const [filterOperator, setFilterOperator] = useState('contains');
-  const [filterValue, setFilterValue] = useState('');
+  const [filterRules, setFilterRules] = useState([{ id: 1, column: '', operator: 'contains', value: '' }]);
   const [showIncompleteColumns, setShowIncompleteColumns] = useState(false);
   const [profileCurrentView, setProfileCurrentView] = useState(false);
   const [replacementColumn, setReplacementColumn] = useState('');
@@ -98,8 +97,8 @@ function App() {
     setChartGroupColumn(firstCategory < 0 ? '' : String(firstCategory));
     setChartAggregate('sum');
     setPage(0);
-    setFilterColumn('');
-    setFilterValue('');
+    setFilterRules([{ id: 1, column: '', operator: 'contains', value: '' }]);
+    nextFilterId.current = 2;
     setReplacementColumn('');
     setReplacementFind('');
     setReplacementValue('');
@@ -174,14 +173,31 @@ function App() {
     loadFile(event.dataTransfer.files?.[0]);
   }
 
+  function updateFilterRule(id, key, value) {
+    setPage(0);
+    setFilterRules((current) => current.map((rule) => rule.id === id ? { ...rule, [key]: value } : rule));
+  }
+
+  function addFilterRule() {
+    if (filterRules.length >= 5) return;
+    setFilterRules((current) => [...current, {
+      id: nextFilterId.current++, column: '', operator: 'contains', value: '',
+    }]);
+    setPage(0);
+  }
+
+  function removeFilterRule(id) {
+    if (filterRules.length <= 1) return;
+    setFilterRules((current) => current.filter((rule) => rule.id !== id));
+    setPage(0);
+  }
+
   const searchTerm = search.trim().toLowerCase();
   const filteredData = useMemo(() => filterRows(preview?.data ?? [], {
     searchTerm,
     hideEmpty,
-    filterColumn,
-    filterOperator,
-    filterValue,
-  }), [filterColumn, filterOperator, filterValue, hideEmpty, preview, searchTerm]);
+    filterRules,
+  }), [filterRules, hideEmpty, preview, searchTerm]);
   const sortedData = useMemo(() => sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
     const rightValue = (right[sort.column] ?? '').trim();
@@ -556,12 +572,20 @@ function App() {
               </div>
             </div>
             <div className="filter-toolbar">
-              <label>Filter column<select value={filterColumn} onChange={(event) => { setFilterColumn(event.target.value); setPage(0); }}><option value="">All columns</option>{preview.headers.map((header, index) => <option value={index} key={index}>{header}</option>)}</select></label>
-              <label>Condition<select value={filterOperator} onChange={(event) => { setFilterOperator(event.target.value); setPage(0); }}><option value="contains">contains</option><option value="startsWith">starts with</option><option value="endsWith">ends with</option><option value="equals">equals</option><option value="notEquals">does not equal</option><option value="greater">greater than</option><option value="less">less than</option><option value="empty">is empty</option><option value="notEmpty">is not empty</option></select></label>
-              <label className="filter-value">Value<input value={filterValue} disabled={filterOperator === 'empty' || filterOperator === 'notEmpty'} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder={filterOperator === 'empty' || filterOperator === 'notEmpty' ? 'Not needed' : 'Type a value'} /></label>
+              <div className="filter-rule-list" aria-label="Filter conditions">
+                {filterRules.map((rule, index) => <div className="filter-rule" role="group" aria-label={`Filter condition ${index + 1}`} key={rule.id}>
+                  {index > 0 && <span className="filter-rule-join" aria-label="and">AND</span>}
+                  <label>Filter column<select value={rule.column} onChange={(event) => updateFilterRule(rule.id, 'column', event.target.value)}><option value="">All columns</option>{preview.headers.map((header, columnIndex) => <option value={columnIndex} key={columnIndex}>{header}</option>)}</select></label>
+                  <label>Condition<select value={rule.operator} onChange={(event) => updateFilterRule(rule.id, 'operator', event.target.value)}><option value="contains">contains</option><option value="startsWith">starts with</option><option value="endsWith">ends with</option><option value="equals">equals</option><option value="notEquals">does not equal</option><option value="greater">greater than</option><option value="less">less than</option><option value="empty">is empty</option><option value="notEmpty">is not empty</option></select></label>
+                  <label className="filter-value">Value<input value={rule.value} disabled={rule.operator === 'empty' || rule.operator === 'notEmpty'} onChange={(event) => updateFilterRule(rule.id, 'value', event.target.value)} placeholder={rule.operator === 'empty' || rule.operator === 'notEmpty' ? 'Not needed' : 'Type a value'} /></label>
+                  <button className="remove-filter-button" type="button" onClick={() => removeFilterRule(rule.id)} disabled={filterRules.length === 1} aria-label={`Remove filter condition ${index + 1}`}>Remove</button>
+                </div>)}
+              </div>
+              <button className="add-filter-button" type="button" onClick={addFilterRule} disabled={filterRules.length >= 5}>+ Add condition</button>
               <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
+              <span className="filter-help">All conditions must match.</span>
             </div>
-            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><button className="copy-view-button" type="button" aria-pressed={editingEnabled} onClick={() => { setEditingCell(null); setEditingEnabled((current) => !current); }}>{editingEnabled ? 'Done editing' : 'Edit data'}</button><button className="copy-view-button" type="button" onClick={undoCellEdit} disabled={editHistory.length === 0 || editingCell !== null}>Undo edit{editHistory.length > 0 ? ` (${editHistory.length})` : ''}</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><button className="copy-view-button" type="button" aria-pressed={editingEnabled} onClick={() => { setEditingCell(null); setEditingEnabled((current) => !current); }}>{editingEnabled ? 'Done editing' : 'Edit data'}</button><button className="copy-view-button" type="button" onClick={undoCellEdit} disabled={editHistory.length === 0 || editingCell !== null}>Undo edit{editHistory.length > 0 ? ` (${editHistory.length})` : ''}</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterRules([{ id: 1, column: '', operator: 'contains', value: '' }]); nextFilterId.current = 2; setPage(0); }}>Reset view</button></div></div>
             {copyStatus && <p className="copy-status" role="status">{copyStatus}</p>}
 
             <div className="table-scroll">

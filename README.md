@@ -11,7 +11,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV and JSON da
 - Blank or repeated column names receive unique labels when a dataset is opened.
 - Uneven rows are aligned to the widest row so extra cells are retained and missing cells stay empty.
 - Keep data on your device while you search, sort, filter, and paginate rows; choose 12, 24, or 50 rows per page.
-- Filter for empty or filled cells in a selected column or across the whole row; match text by exact value, exclusion, prefix, or suffix.
+- Apply up to five AND-combined filter conditions across one or more columns, including empty cells, numeric comparisons, exact matches, prefixes, and suffixes.
 - Clear an active search with one click or the Escape key.
 - Choose visible columns, copy the filtered view into a spreadsheet, and export cleaned CSV or JSON records; JSON exports preserve imported value types unless a value is changed, and exports can trim whitespace and remove duplicates.
 - Edit cells directly in the table before exporting; undo recent edits, which stay in the current browser session.

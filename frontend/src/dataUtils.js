@@ -126,19 +126,41 @@ export function filterRows(rows, {
   filterColumn = '',
   filterOperator = 'contains',
   filterValue = '',
+  filterRules = [],
 } = {}) {
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const target = filterValue.trim();
 
-  return rows.filter((values) =>
-    values.some((value) => (value ?? '').toLowerCase().includes(normalizedSearch)) &&
-    (!hideEmpty || values.every((value) => (value ?? '').trim() !== '')) &&
-    (filterOperator === 'empty' || filterOperator === 'notEmpty'
+  function matchesRule(values, rule) {
+    const cells = rule.column === '' ? values : [values[Number(rule.column)] ?? ''];
+    const ruleTarget = String(rule.value ?? '').trim();
+    if (rule.operator === 'empty') return cells.some((value) => !(value ?? '').trim());
+    if (rule.operator === 'notEmpty') return cells.every((value) => (value ?? '').trim() !== '');
+    if (ruleTarget === '') return true;
+
+    return rule.operator === 'notEquals'
+      ? cells.every((value) => (value ?? '').trim().toLowerCase() !== ruleTarget.toLowerCase())
+      : cells.some((value) => {
+        const cell = (value ?? '').trim();
+        if (rule.operator === 'contains') return cell.toLowerCase().includes(ruleTarget.toLowerCase());
+        if (rule.operator === 'startsWith') return cell.toLowerCase().startsWith(ruleTarget.toLowerCase());
+        if (rule.operator === 'endsWith') return cell.toLowerCase().endsWith(ruleTarget.toLowerCase());
+        if (rule.operator === 'equals') return cell.toLowerCase() === ruleTarget.toLowerCase();
+        const number = Number(cell);
+        const comparison = Number(ruleTarget);
+        if (!Number.isFinite(number) || !Number.isFinite(comparison)) return false;
+        return rule.operator === 'greater' ? number > comparison : number < comparison;
+      });
+  }
+
+  const matchesFilters = filterRules.length > 0
+    ? (values) => filterRules.every((rule) => matchesRule(values, rule))
+    : (values) => filterOperator === 'empty' || filterOperator === 'notEmpty'
       ? (() => {
         const cells = filterColumn === '' ? values : [values[Number(filterColumn)] ?? ''];
         return filterOperator === 'empty'
-          ? cells.some((value) => !value.trim())
-          : cells.every((value) => value.trim() !== '');
+          ? cells.some((value) => !(value ?? '').trim())
+          : cells.every((value) => (value ?? '').trim() !== '');
       })()
       : filterColumn === '' || target === '' || (() => {
         const cell = (values[Number(filterColumn)] ?? '').trim();
@@ -151,7 +173,12 @@ export function filterRows(rows, {
         const comparison = Number(target);
         if (!Number.isFinite(number) || !Number.isFinite(comparison)) return false;
         return filterOperator === 'greater' ? number > comparison : number < comparison;
-      })()),
+      })();
+
+  return rows.filter((values) =>
+    values.some((value) => (value ?? '').toLowerCase().includes(normalizedSearch)) &&
+    (!hideEmpty || values.every((value) => (value ?? '').trim() !== '')) &&
+    matchesFilters(values),
   );
 }
 
