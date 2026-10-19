@@ -1,5 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -7,6 +8,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from .models import Dataset
+from .tasks import process_saved_dataset_profile
 
 
 class AuthenticationAndDatasetTests(TestCase):
@@ -129,6 +131,40 @@ class AuthenticationAndDatasetTests(TestCase):
         }, format='multipart')
         self.assertEqual(response.status_code, 400)
         self.assertIn('storage quota', str(response.data).lower())
+
+    @override_settings(DATASET_BACKGROUND_THRESHOLD_BYTES=1)
+    @patch('apps.api.tasks.process_saved_dataset_profile.delay')
+    def test_larger_dataset_upload_queues_profiling(self, enqueue_profile):
+        user = get_user_model().objects.create_user(username='queue-user', password='Queue-pass-573!')
+        self.client.force_authenticate(user=user)
+        response = self.client.post('/api/v1/datasets/', {
+            'file': SimpleUploadedFile('queued.csv', b'Region,Sales\nWest,10\n'),
+        }, format='multipart')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['profile_status'], 'pending')
+        enqueue_profile.assert_called_once_with(response.data['id'])
+
+        profile_url = f"/api/v1/datasets/{response.data['id']}/profile/"
+        pending_profile = self.client.get(profile_url)
+        self.assertEqual(pending_profile.status_code, 202)
+        process_saved_dataset_profile.run(response.data['id'])
+        ready_profile = self.client.get(profile_url)
+        self.assertEqual(ready_profile.status_code, 200)
+        self.assertEqual(ready_profile.data['profile']['rowCount'], 1)
+
+    @override_settings(DATASET_BACKGROUND_THRESHOLD_BYTES=1)
+    @patch('apps.api.tasks.process_saved_dataset_profile.delay', side_effect=RuntimeError('Redis is unavailable'))
+    def test_upload_survives_unavailable_background_queue(self, enqueue_profile):
+        user = get_user_model().objects.create_user(username='queue-fallback', password='Queue-pass-573!')
+        self.client.force_authenticate(user=user)
+        response = self.client.post('/api/v1/datasets/', {
+            'file': SimpleUploadedFile('queued.csv', b'Region,Sales\nWest,10\n'),
+        }, format='multipart')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['profile_status'], 'failed')
+        enqueue_profile.assert_called_once()
 
     def test_public_profile_and_health_endpoints_remain_available(self):
         self.assertEqual(self.client.get('/api/v1/health/').status_code, 200)

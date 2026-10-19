@@ -106,8 +106,8 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Dataset
-        fields = ['id', 'name', 'original_filename', 'file_size', 'created_at', 'download_url', 'file']
-        read_only_fields = ['id', 'original_filename', 'file_size', 'created_at', 'download_url']
+        fields = ['id', 'name', 'original_filename', 'file_size', 'profile_status', 'created_at', 'download_url', 'file']
+        read_only_fields = ['id', 'original_filename', 'file_size', 'profile_status', 'created_at', 'download_url']
 
     def validate_file(self, uploaded_file):
         filename = Path(uploaded_file.name.replace('\\', '/')).name
@@ -117,7 +117,10 @@ class DatasetSerializer(serializers.ModelSerializer):
             limit_mb = settings.MAX_DATASET_UPLOAD_SIZE // (1024 * 1024)
             raise serializers.ValidationError(f'Files must be {limit_mb} MiB or smaller.')
         try:
-            validate_dataset_upload(uploaded_file)
+            validate_dataset_upload(
+                uploaded_file,
+                full_validation=uploaded_file.size <= settings.DATASET_BACKGROUND_THRESHOLD_BYTES,
+            )
         except ValueError as error:
             raise serializers.ValidationError(str(error)) from error
         return uploaded_file

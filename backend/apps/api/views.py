@@ -12,7 +12,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import Dataset
 from .serializers import DatasetProfileSerializer, DatasetSerializer, UserRegistrationSerializer
-from .services import profile_dataset, profile_uploaded_dataset
+from .services import profile_dataset, start_dataset_profile
 
 
 class AuthRateThrottle(AnonRateThrottle):
@@ -95,6 +95,10 @@ class DatasetListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return Dataset.objects.filter(owner=self.request.user)
 
+    def perform_create(self, serializer):
+        dataset = serializer.save()
+        start_dataset_profile(dataset)
+
 
 class DatasetDetailView(generics.RetrieveDestroyAPIView):
     serializer_class = DatasetSerializer
@@ -125,10 +129,15 @@ class SavedDatasetProfileView(APIView):
 
     def get(self, request, pk):
         dataset = get_object_or_404(Dataset, pk=pk, owner=request.user)
-        if dataset.profile is None:
-            try:
-                dataset.profile = profile_uploaded_dataset(dataset)
-            except ValueError as error:
-                return Response({'detail': str(error)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-            dataset.save(update_fields=['profile'])
-        return Response({'status': 'ready', 'profile': dataset.profile})
+        if dataset.profile_status == 'not_started':
+            dataset = start_dataset_profile(dataset)
+        response = {
+            'status': dataset.profile_status,
+            'profile': dataset.profile,
+            'detail': dataset.profile_error or None,
+        }
+        if dataset.profile_status in {'pending', 'processing'}:
+            return Response(response, status=status.HTTP_202_ACCEPTED)
+        if dataset.profile_status == 'failed':
+            return Response(response, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        return Response(response)

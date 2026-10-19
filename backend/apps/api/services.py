@@ -207,6 +207,8 @@ def validate_dataset_upload(uploaded_file, full_validation=True):
     uploaded_file.seek(0)
     sample = uploaded_file.read(8192)
     uploaded_file.seek(0)
+
+
     if extension == '.csv':
         if b'\x00' in sample:
             raise ValueError('The uploaded CSV is not valid UTF-8 text.')
@@ -289,3 +291,36 @@ def validate_dataset_upload(uploaded_file, full_validation=True):
             except Exception as error:
                 raise ValueError('The uploaded XLSX file could not be read.') from error
     uploaded_file.seek(0)
+
+
+def start_dataset_profile(dataset):
+    """Profile small datasets inline and queue larger files for a Celery worker."""
+    from django.db import transaction
+
+    dataset.profile = None
+    dataset.profile_error = ''
+    if dataset.file_size <= settings.DATASET_BACKGROUND_THRESHOLD_BYTES:
+        dataset.profile_status = 'processing'
+        dataset.save(update_fields=['profile', 'profile_error', 'profile_status'])
+        try:
+            with dataset.file.open('rb') as source:
+                validate_dataset_upload(source, full_validation=True)
+            dataset.profile = profile_uploaded_dataset(dataset)
+            dataset.profile_status = 'ready'
+        except Exception:
+            dataset.profile_status = 'failed'
+            dataset.profile_error = 'Profiling failed. Check that the uploaded file contains a valid supported table.'
+        dataset.save(update_fields=['profile', 'profile_error', 'profile_status'])
+        return dataset
+
+    dataset.profile_status = 'pending'
+    dataset.save(update_fields=['profile', 'profile_error', 'profile_status'])
+    from .tasks import process_saved_dataset_profile
+
+    try:
+        transaction.on_commit(lambda: process_saved_dataset_profile.delay(dataset.pk))
+    except Exception:
+        dataset.profile_status = 'failed'
+        dataset.profile_error = 'Background profiling is unavailable. Configure Redis and start a Celery worker.'
+        dataset.save(update_fields=['profile_status', 'profile_error'])
+    return dataset
