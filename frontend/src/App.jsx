@@ -56,6 +56,8 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(12);
+  const [editingEnabled, setEditingEnabled] = useState(false);
+  const [editingCell, setEditingCell] = useState(null);
   const [chartColumn, setChartColumn] = useState(null);
   const [chartGroupColumn, setChartGroupColumn] = useState('');
   const [chartAggregate, setChartAggregate] = useState('sum');
@@ -82,6 +84,8 @@ function App() {
         : { present: false }),
     ])) : null;
     setCopyStatus('');
+    setEditingEnabled(false);
+    setEditingCell(null);
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
@@ -265,6 +269,23 @@ function App() {
       column,
       direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
     }));
+  }
+
+  function commitCellEdit(rowIndex, columnIndex, value) {
+    setPreview((current) => {
+      if (!current || current.data[rowIndex]?.[columnIndex] === value) return current;
+      const previousRow = current.data[rowIndex];
+      if (!previousRow) return current;
+      const nextRow = [...previousRow];
+      nextRow[columnIndex] = value;
+      if (current.jsonCellMetadata) {
+        current.jsonCellMetadata.set(nextRow, current.jsonCellMetadata.get(previousRow));
+      }
+      const data = [...current.data];
+      data[rowIndex] = nextRow;
+      return { ...current, data };
+    });
+    setEditingCell(null);
   }
 
   function downloadCsv() {
@@ -516,7 +537,7 @@ function App() {
               <label className="filter-value">Value<input value={filterValue} disabled={filterOperator === 'empty' || filterOperator === 'notEmpty'} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder={filterOperator === 'empty' || filterOperator === 'notEmpty' ? 'Not needed' : 'Type a value'} /></label>
               <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
             </div>
-            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><button className="copy-view-button" type="button" aria-pressed={editingEnabled} onClick={() => { setEditingCell(null); setEditingEnabled((current) => !current); }}>{editingEnabled ? 'Done editing' : 'Edit data'}</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
             {copyStatus && <p className="copy-status" role="status">{copyStatus}</p>}
 
             <div className="table-scroll">
@@ -526,9 +547,38 @@ function App() {
                     {header}<span aria-hidden="true">{sort.column === index ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
                   </button>
                 </th>; })}</tr></thead>
-                <tbody>{visibleData.map((values, rowIndex) => (
-                  <tr key={page * pageSize + rowIndex}>{selectedColumns.map((columnIndex) => <td key={columnIndex}>{values[columnIndex]?.trim() || <span className="empty-cell">Empty</span>}</td>)}</tr>
-                ))}{sortedData.length === 0 && <tr><td colSpan={Math.max(1, selectedColumns.length)} className="empty-results">No rows match your filters. Try changing the search or filter.</td></tr>}</tbody>
+                <tbody>{visibleData.map((values, rowIndex) => {
+                  const sourceRowIndex = preview.data.indexOf(values);
+                  const displayedRowNumber = sourceRowIndex + 1;
+                  return <tr key={sourceRowIndex}>{selectedColumns.map((columnIndex) => {
+                    const cellValue = values[columnIndex] ?? '';
+                    const isEditing = editingCell?.rowIndex === sourceRowIndex && editingCell?.columnIndex === columnIndex;
+                    return <td key={columnIndex}>{isEditing ? <input
+                      className="cell-editor"
+                      autoFocus
+                      aria-label={`Edit ${preview.headers[columnIndex]}, row ${displayedRowNumber}`}
+                      value={editingCell.value}
+                      onChange={(event) => setEditingCell((current) => ({ ...current, value: event.target.value }))}
+                      onBlur={(event) => {
+                        if (event.currentTarget.dataset.cancelled !== 'true') commitCellEdit(sourceRowIndex, columnIndex, editingCell.value);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') event.currentTarget.blur();
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          event.currentTarget.dataset.cancelled = 'true';
+                          setEditingCell(null);
+                        }
+                      }}
+                    /> : editingEnabled ? <button
+                      className="cell-edit-value"
+                      type="button"
+                      aria-label={`Edit ${preview.headers[columnIndex]}, row ${displayedRowNumber}`}
+                      onClick={() => setEditingCell({ rowIndex: sourceRowIndex, columnIndex, value: cellValue })}
+                    >{cellValue.trim() ? cellValue : <span className="empty-cell">Empty</span>}</button>
+                      : cellValue.trim() || <span className="empty-cell">Empty</span>}</td>;
+                  })}</tr>;
+                })}{sortedData.length === 0 && <tr><td colSpan={Math.max(1, selectedColumns.length)} className="empty-results">No rows match your filters. Try changing the search or filter.</td></tr>}</tbody>
               </table>
             </div>
             <div className="table-footnote">Showing {visibleData.length} of {sortedData.length.toLocaleString()} matching records <span>·</span> Select a column heading to sort<div className="pagination"><button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous</button><span>Page {page + 1} of {pageCount}</span><button type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next →</button></div></div>
