@@ -38,7 +38,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV, JSON, and 
 
 ### Backend
 
-The frontend works on its own and keeps imported files in the browser. The API's profiling endpoint is stateless. Authenticated dataset uploads are stored as files under `backend/media/` by default, while their ownership and metadata are stored in the configured database.
+The frontend works on its own and keeps imported files in the browser. The API offers both stateless profiling and profiling for authenticated, saved datasets. Uploaded files are stored privately under `backend/media/` by default, while ownership, metadata, and cached profiles are stored in the configured database.
 
 From the repository root, create and activate a Python virtual environment, copy the environment template, and set a secret key:
 
@@ -64,6 +64,7 @@ On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1
 - `GET /api/v1/auth/me/` returns the authenticated user's account details.
 - `POST /api/v1/datasets/` accepts `multipart/form-data` with a `file` field containing a CSV, JSON, or XLSX file and an optional display `name`. Uploads are limited to 20 MiB by default.
 - `GET /api/v1/datasets/` lists only the authenticated user's datasets. `GET /api/v1/datasets/<id>/` returns its metadata, `GET /api/v1/datasets/<id>/download/` downloads its file, and `DELETE /api/v1/datasets/<id>/` deletes it. Send `Authorization: Bearer <access-token>` to these endpoints.
+- `GET /api/v1/datasets/<id>/profile/` profiles the authenticated user's stored CSV, JSON, or XLSX dataset and caches the profile with its metadata. The profile response contains row and column counts, duplicate rows, missing values, frequent values, and numeric or ISO date summaries. Dataset ownership is enforced for this route.
 - `POST /api/v1/datasets/profile/` profiles a JSON table. Send `headers` (1–100 unique names) and `rows` (up to 10,000 rows, each matching the header width). Responses include row and column counts, duplicate rows, missing values, frequent values, and numeric or ISO date summaries. Anonymous requests are rate-limited.
 
 Example request body:

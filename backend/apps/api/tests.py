@@ -90,6 +90,28 @@ class AuthenticationAndDatasetTests(TestCase):
         self.assertEqual(rejected.status_code, 400)
         self.assertIn('Choose a CSV, JSON, or XLSX file.', str(rejected.data))
 
+    def test_saved_dataset_profile_is_authenticated_cached_and_owner_scoped(self):
+        owner = get_user_model().objects.create_user(username='profile-owner', password='Owner-pass-573!')
+        other_user = get_user_model().objects.create_user(username='profile-other', password='Other-pass-573!')
+        self.client.force_authenticate(user=owner)
+        created = self.client.post('/api/v1/datasets/', {
+            'file': SimpleUploadedFile('scores.csv', b'Name,Score\nAda,10\nLin,20\n', content_type='text/csv'),
+        }, format='multipart')
+        self.assertEqual(created.status_code, 201)
+        url = f"/api/v1/datasets/{created.data['id']}/profile/"
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['status'], 'ready')
+        self.assertEqual(response.data['profile']['rowCount'], 2)
+        self.assertEqual(Dataset.objects.get(pk=created.data['id']).profile['columnCount'], 2)
+
+        self.client.force_authenticate(user=other_user)
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_saved_dataset_profile_requires_authentication(self):
+        self.assertEqual(self.client.get('/api/v1/datasets/1/profile/').status_code, 401)
+
     def test_public_profile_and_health_endpoints_remain_available(self):
         self.assertEqual(self.client.get('/api/v1/health/').status_code, 200)
         response = self.client.post('/api/v1/datasets/profile/', {

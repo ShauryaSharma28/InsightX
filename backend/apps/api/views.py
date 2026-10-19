@@ -12,7 +12,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import Dataset
 from .serializers import DatasetProfileSerializer, DatasetSerializer, UserRegistrationSerializer
-from .services import profile_dataset
+from .services import profile_dataset, profile_uploaded_dataset
 
 
 class AuthRateThrottle(AnonRateThrottle):
@@ -21,6 +21,10 @@ class AuthRateThrottle(AnonRateThrottle):
 
 class DatasetUploadRateThrottle(UserRateThrottle):
     scope = 'dataset_upload'
+
+
+class SavedDatasetProfileRateThrottle(UserRateThrottle):
+    scope = 'dataset_profile'
 
 
 class HealthView(APIView):
@@ -113,3 +117,18 @@ class DatasetDownloadView(APIView):
         )
         response['Cache-Control'] = 'private, no-store'
         return response
+
+
+class SavedDatasetProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [SavedDatasetProfileRateThrottle]
+
+    def get(self, request, pk):
+        dataset = get_object_or_404(Dataset, pk=pk, owner=request.user)
+        if dataset.profile is None:
+            try:
+                dataset.profile = profile_uploaded_dataset(dataset)
+            except ValueError as error:
+                return Response({'detail': str(error)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            dataset.save(update_fields=['profile'])
+        return Response({'status': 'ready', 'profile': dataset.profile})

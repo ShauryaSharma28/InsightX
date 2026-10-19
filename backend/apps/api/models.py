@@ -20,6 +20,7 @@ class Dataset(models.Model):
     original_filename = models.CharField(max_length=255)
     file = models.FileField(upload_to=dataset_upload_path, max_length=255)
     file_size = models.PositiveBigIntegerField()
+    profile = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

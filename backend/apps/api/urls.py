@@ -2,7 +2,7 @@ from django.urls import path
 
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import CurrentUserView, DatasetDetailView, DatasetDownloadView, DatasetListCreateView, DatasetProfileView, HealthView, RateLimitedTokenObtainPairView, RegisterView
+from .views import CurrentUserView, DatasetDetailView, DatasetDownloadView, DatasetListCreateView, DatasetProfileView, HealthView, RateLimitedTokenObtainPairView, RegisterView, SavedDatasetProfileView
 
 app_name = 'api'
 
@@ -16,4 +16,5 @@ urlpatterns = [
     path('datasets/', DatasetListCreateView.as_view(), name='dataset-list-create'),
     path('datasets/<int:pk>/', DatasetDetailView.as_view(), name='dataset-detail'),
     path('datasets/<int:pk>/download/', DatasetDownloadView.as_view(), name='dataset-download'),
+    path('datasets/<int:pk>/profile/', SavedDatasetProfileView.as_view(), name='dataset-saved-profile'),
 ]

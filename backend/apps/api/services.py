@@ -1,6 +1,10 @@
 from collections import Counter
 from datetime import date, datetime, time, timezone
+import json
 import math
+from pathlib import Path
+
+import pandas as pd
 
 
 def _iso_timestamp(value):
@@ -76,3 +80,66 @@ def profile_dataset(headers, rows):
         'duplicateRows': duplicate_rows,
         'columns': columns,
     }
+
+
+def _cell_as_text(value):
+    if value is None:
+        return ''
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+    try:
+        missing = pd.isna(value)
+        if not hasattr(missing, '__len__') and bool(missing):
+            return ''
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)
+
+
+def profile_uploaded_dataset(dataset):
+    """Read a private uploaded dataset and return the same profile shape as the JSON API."""
+    extension = Path(dataset.original_filename).suffix.lower()
+    try:
+        with dataset.file.open('rb') as source:
+            if extension == '.csv':
+                frame = pd.read_csv(
+                    source,
+                    dtype=object,
+                    keep_default_na=False,
+                    sep=None,
+                    engine='python',
+                    encoding='utf-8-sig',
+                )
+            elif extension == '.json':
+                records = json.load(source)
+                if not isinstance(records, list) or any(not isinstance(record, dict) for record in records):
+                    raise ValueError('JSON must contain an array of objects.')
+                frame = pd.DataFrame.from_records(records)
+            elif extension == '.xlsx':
+                frame = pd.read_excel(source, engine='openpyxl', dtype=object)
+            else:
+                raise ValueError('Only CSV, JSON, and XLSX datasets can be profiled.')
+    except ValueError:
+        raise
+    except Exception as error:
+        raise ValueError('The uploaded dataset could not be parsed.') from error
+
+    headers = []
+    used_headers = set()
+    for index, raw_header in enumerate(frame.columns):
+        base = str(raw_header).strip() or f'Column {index + 1}'
+        candidate = base
+        suffix = 2
+        while candidate in used_headers:
+            candidate = f'{base} ({suffix})'
+            suffix += 1
+        headers.append(candidate)
+        used_headers.add(candidate)
+
+    rows = [
+        [_cell_as_text(value) for value in row]
+        for row in frame.itertuples(index=False, name=None)
+    ]
+    return profile_dataset(headers, rows)
