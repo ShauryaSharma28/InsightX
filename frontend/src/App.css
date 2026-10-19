@@ -58,7 +58,7 @@
 .table-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 13px; }.table-heading h3 { margin: 8px 0 0; color: #304239; font-size: 14px; font-weight: 650; letter-spacing: -.025em; }
 .search-control { display: flex; width: min(270px, 45%); align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #e9ece6; border-radius: 7px; color: #939b91; }.search-control:focus-within { border-color: #a7b68e; box-shadow: 0 0 0 3px rgb(130 156 80 / 10%); }.search-control > span:first-child { font-size: 17px; line-height: 1; }.search-control input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #35463b; font: inherit; font-size: 10px; }.search-control input::placeholder { color: #a4aba2; }.search-control .result-count { white-space: nowrap; color: #7d915f; font-size: 8px; }
 .search-control .clear-search { display: grid; flex: 0 0 19px; width: 19px; height: 19px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #f2f5ed; color: #73845e; font-size: 14px; line-height: 1; cursor: pointer; }.search-control .clear-search:focus-visible { outline: 2px solid #91a970; outline-offset: 2px; }
-.table-scroll { overflow: auto; border: 1px solid #edf0ea; border-radius: 8px; }
+.table-scroll { max-height: min(70vh, 720px); overflow: auto; border: 1px solid #edf0ea; border-radius: 8px; }
 table { width: 100%; border-collapse: collapse; text-align: left; font-size: 10px; }
 th, td { max-width: 240px; padding: 11px 12px; border-bottom: 1px solid #f0f2ee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 th { background: #f8f9f6; color: #818b80; font-size: 8px; font-weight: 750; letter-spacing: .04em; }
