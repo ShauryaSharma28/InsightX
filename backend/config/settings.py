@@ -40,6 +40,9 @@ if not DEBUG and (SECRET_KEY.startswith('django-insecure-') or SECRET_KEY == 're
     raise ImproperlyConfigured('Set a unique SECRET_KEY before running Django with DEBUG=False.')
 
 ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver')
+render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_hostname)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -86,7 +89,21 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 DB_ENGINE = os.environ.get('DB_ENGINE', 'sqlite').strip().lower()
-if DB_ENGINE == 'mysql':
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+if DATABASE_URL:
+    try:
+        import dj_database_url
+    except ImportError as error:
+        raise ImproperlyConfigured('Install dj-database-url to use DATABASE_URL.') from error
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=60,
+            conn_health_checks=True,
+            ssl_require=not DEBUG,
+        )
+    }
+elif DB_ENGINE == 'mysql':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.mysql',
@@ -111,7 +128,7 @@ elif DB_ENGINE == 'sqlite':
         }
     }
 else:
-    raise ImproperlyConfigured('DB_ENGINE must be either sqlite or mysql.')
+    raise ImproperlyConfigured('DB_ENGINE must be sqlite or mysql, or set DATABASE_URL.')
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -189,6 +206,7 @@ if DATASET_STORAGE_BACKEND == 's3':
         'bucket_name': bucket_name,
         'location': os.environ.get('AWS_LOCATION', 'insightx-private').strip('/'),
         'default_acl': None,
+        'addressing_style': 'path',
         'querystring_auth': True,
         'file_overwrite': False,
         'object_parameters': {'CacheControl': 'private, no-store'},
