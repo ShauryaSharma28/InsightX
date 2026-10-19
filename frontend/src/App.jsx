@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
 import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
+import { parseExcelWorkbook } from './excelUtils.js';
 import './App.css';
 
 function csvCell(value) {
@@ -138,18 +139,24 @@ function App() {
     }
 
     const extension = file.name.split('.').pop()?.toLowerCase();
-    if (extension !== 'csv' && extension !== 'json') {
+    if (!['csv', 'json', 'xlsx'].includes(extension)) {
       setIsLoading(false);
-      setError('That file type is not supported. Choose a CSV or JSON file.');
+      setError('That file type is not supported. Choose a CSV, JSON, or Excel (.xlsx) file.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const fileText = await file.text();
+      let jsonDataset = null;
+      let rows;
+      if (extension === 'xlsx') {
+        rows = await parseExcelWorkbook(await file.arrayBuffer());
+      } else {
+        const fileText = await file.text();
+        jsonDataset = extension === 'json' ? parseJsonDataset(fileText) : null;
+        rows = jsonDataset?.rows ?? parseCsv(fileText);
+      }
       if (requestId !== importRequest.current) return;
-      const jsonDataset = extension === 'json' ? parseJsonDataset(fileText) : null;
-      const rows = jsonDataset?.rows ?? parseCsv(fileText);
       if (rows.length < 2) {
         setError('This file needs field names and at least one data row.');
         return;
@@ -509,7 +516,7 @@ function App() {
         <div className="intro-copy">
           <span className="eyebrow">YOUR DATA, IN A NEW LIGHT</span>
           <h1>Make sense<br />of <em>every row.</em></h1>
-          <p>A calm, clear space to explore your data.<br className="desktop-break" /> Drop in a CSV or JSON file and see what’s inside.</p>
+          <p>A calm, clear space to explore your data.<br className="desktop-break" /> Drop in a CSV, JSON, or Excel file and see what’s inside.</p>
         </div>
         <div className="intro-art" aria-hidden="true">
           <div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" />
@@ -521,7 +528,7 @@ function App() {
       <section className="workspace" id="workspace" aria-labelledby="upload-title">
         <div className="workspace-heading">
           <div><span className="section-kicker">01 <i /> START WITH A DATASET</span><h2 id="upload-title">Bring your data in</h2></div>
-          <div className="csv-pill"><span>↳</span> CSV / JSON</div>
+          <div className="csv-pill"><span>↳</span> CSV / JSON / XLSX</div>
         </div>
 
         <label
@@ -532,11 +539,11 @@ function App() {
           onDrop={handleDrop}
         >
           <span className="upload-icon" aria-hidden="true"><span>↑</span></span>
-          <span className="upload-copy"><strong>Drop your CSV or JSON here</strong><small>or browse files from your device</small></span>
+          <span className="upload-copy"><strong>Drop a CSV, JSON, or Excel file here</strong><small>or browse files from your device</small></span>
           <span className="browse-button">Choose a file <span aria-hidden="true">↗</span></span>
-          <input id="dataset-file" type="file" accept=".csv,.json,text/csv,application/json" onChange={handleFileChange} />
+          <input id="dataset-file" type="file" accept=".csv,.json,.xlsx,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFileChange} />
         </label>
-        <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded. CSV and JSON files are supported.</div>
+        <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded. CSV, JSON, and XLSX files are supported.</div>
         <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 62-row sample <span>↗</span></button><button className="sample-download" type="button" onClick={downloadSampleCsv}>Download sample CSV ↓</button></div>
 
         {isLoading && <p className="import-status" role="status">Reading your file…</p>}

@@ -92,6 +92,10 @@ export function getImportErrorMessage(error, extension) {
   if (extension === 'json' && error instanceof SyntaxError) {
     return 'This JSON file is malformed. Check its brackets, commas, and quoted strings.';
   }
+  if (extension === 'xlsx') {
+    if (error instanceof Error && /^Excel\b/.test(error.message)) return error.message;
+    return 'This Excel workbook could not be read. Check that it is a valid .xlsx file.';
+  }
   if (error instanceof Error && /^(CSV|JSON)\b/.test(error.message)) return error.message;
   return 'The file could not be read. Try choosing it again.';
 }

@@ -45,6 +45,8 @@ test('parseJson rejects empty arrays and non-object records', () => {
 test('getImportErrorMessage distinguishes malformed JSON and unsupported file content', () => {
   assert.match(getImportErrorMessage(new SyntaxError('Unexpected token'), 'json'), /JSON file is malformed/);
   assert.equal(getImportErrorMessage(new Error('JSON must contain a non-empty array of objects'), 'json'), 'JSON must contain a non-empty array of objects');
+  assert.match(getImportErrorMessage(new Error('corrupt archive'), 'xlsx'), /valid \.xlsx file/);
+  assert.equal(getImportErrorMessage(new Error('Excel workbook does not contain any worksheet data.'), 'xlsx'), 'Excel workbook does not contain any worksheet data.');
   assert.match(getImportErrorMessage(new Error('permission denied'), 'csv'), /file could not be read/);
 });
 
@@ -87,7 +89,7 @@ test('getColumnProfiles reports completeness and numeric summary statistics', ()
 
   assert.deepEqual(profiles[0], {
     header: 'Score', filled: 3, missing: 1, completeness: 75, distinct: 3,
-    type: 'Number', min: 1, max: 5, average: 3, median: 3,
+    commonValues: [], type: 'Number', min: 1, max: 5, average: 3, median: 3,
   });
   assert.equal(profiles[1].missing, 1);
   assert.equal(profiles[1].distinct, 2);
