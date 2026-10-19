@@ -26,25 +26,46 @@ InsightX is a browser based workspace for exploring and cleaning CSV and JSON da
 ## Project structure
 
 - `frontend/` — React application powered by Vite
-- `backend/` — Django project and REST Framework configuration
+- `backend/` - Optional Django REST API for health checks and dataset profiling
 - `sample-sales.csv` — sample dataset shown on the GitHub repository home and used by the website
 
 ## Run the project locally
 
 ### Backend
 
-From the repository root, create and activate a Python virtual environment, then install the backend requirements:
+The frontend works on its own and keeps imported files in the browser. The optional API does not store submitted rows; it calculates a profile for each request and returns the summary.
+
+From the repository root, create and activate a Python virtual environment, copy the environment template, and set a secret key:
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate
+cp .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+# Put the generated value in SECRET_KEY in .env
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
 ```
 
-The current Django settings use the included SQLite database (`backend/db.sqlite3`). The `backend/.env.example` file is a reference for database settings; those values are not currently read by the Django settings.
+On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` and copy the template with `Copy-Item .env.example .env`. Django creates a local SQLite database on the first migration; it is ignored by Git. Set `DEBUG=False`, a unique `SECRET_KEY`, and production `ALLOWED_HOSTS` before deploying the API.
+
+#### Backend API
+
+- `GET /api/v1/health/` returns the service health status.
+- `POST /api/v1/datasets/profile/` profiles a JSON table. Send `headers` (1–100 unique names) and `rows` (up to 10,000 rows, each matching the header width). Responses include row and column counts, duplicate rows, missing values, frequent values, and numeric or ISO date summaries. Anonymous requests are rate-limited.
+
+Example request body:
+
+```json
+{
+  "headers": ["Region", "Revenue"],
+  "rows": [["West", 120], ["East", 95], ["West", 140]]
+}
+```
+
+The current browser app continues to analyze files locally and does not call this API.
 
 ### Frontend
 
