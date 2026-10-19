@@ -88,6 +88,8 @@ td { color: #5c675e; }tr:last-child td { border-bottom: 0; }.empty-cell { color:
 .filter-rule .filter-value { flex: 1; min-width: 140px; }
 .filter-rule-join { align-self: center; color: #b4d27c; font-size: 8px; font-weight: 750; letter-spacing: .1em; }
 .filter-mode { display: inline-grid; gap: 5px; color: #a5b1a2; font-size: 8px; font-weight: 650; letter-spacing: .04em; }
+.page-jump { display: inline-flex; align-items: center; gap: 6px; }
+.page-jump input { width: 56px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surface); text-align: center; }
 .filter-help { color: #9ba99c; font-size: 8px; }
 .add-filter-button, .remove-filter-button { min-height: 30px; padding: 6px 9px; border: 1px solid #35443a; border-radius: 5px; background: #18221c; color: #c5d1c1; font-size: 9px; cursor: pointer; }
 .add-filter-button:hover, .remove-filter-button:not(:disabled):hover { border-color: #718d56; background: #202c22; }

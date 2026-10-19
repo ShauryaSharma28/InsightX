@@ -657,7 +657,7 @@ function App() {
                 })}{sortedData.length === 0 && <tr><td colSpan={Math.max(1, selectedColumns.length)} className="empty-results">No rows match your filters. Try changing the search or filter.</td></tr>}</tbody>
               </table>
             </div>
-            <div className="table-footnote">Showing {visibleData.length} of {sortedData.length.toLocaleString()} matching records <span>·</span> Select a column heading to sort<div className="pagination"><button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous</button><span>Page {page + 1} of {pageCount}</span><button type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next →</button></div></div>
+            <div className="table-footnote">Showing {visibleData.length} of {sortedData.length.toLocaleString()} matching records <span>·</span> Select a column heading to sort<div className="pagination"><button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous</button><label className="page-jump">Page <input type="number" min="1" max={pageCount} value={page + 1} aria-label={`Page number, from 1 to ${pageCount}`} onChange={(event) => { const requestedPage = Number(event.target.value); if (Number.isFinite(requestedPage)) setPage(Math.min(pageCount - 1, Math.max(0, requestedPage - 1))); }} /> of {pageCount}</label><button type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next →</button></div></div>
           </div>
         )}
       </section>
