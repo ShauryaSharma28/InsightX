@@ -65,6 +65,22 @@ Example request body:
 }
 ```
 
+The request body is limited to 8 MB. Invalid headers, unsupported cell values, duplicate column names, or rows with the wrong width return HTTP 400. Anonymous clients are limited to 120 requests per hour; exceeding the limit returns HTTP 429.
+
+Example response for the request above:
+
+```json
+{
+  "rowCount": 3,
+  "columnCount": 2,
+  "duplicateRows": 0,
+  "columns": [
+    {"name": "Region", "type": "Text", "filled": 3, "missing": 0, "distinct": 2, "completeness": 100, "commonValues": [{"value": "West", "count": 2}]},
+    {"name": "Revenue", "type": "Number", "filled": 3, "missing": 0, "distinct": 3, "completeness": 100, "commonValues": [], "min": 95, "max": 140, "average": 118.33333333333333, "median": 120}
+  ]
+}
+```
+
 The current browser app continues to analyze files locally and does not call this API.
 
 ### Frontend
