@@ -315,10 +315,13 @@ def start_dataset_profile(dataset):
     dataset.save(update_fields=['profile', 'profile_error', 'profile_status'])
     from .tasks import process_saved_dataset_profile
 
-    try:
-        transaction.on_commit(lambda: process_saved_dataset_profile.delay(dataset.pk))
-    except Exception:
-        dataset.profile_status = 'failed'
-        dataset.profile_error = 'Background profiling is unavailable. Configure Redis and start a Celery worker.'
-        dataset.save(update_fields=['profile_status', 'profile_error'])
+    def enqueue_profile():
+        try:
+            process_saved_dataset_profile.delay(dataset.pk)
+        except Exception:
+            dataset.profile_status = 'failed'
+            dataset.profile_error = 'Background profiling is unavailable. Configure Redis and start a Celery worker.'
+            dataset.save(update_fields=['profile_status', 'profile_error'])
+
+    transaction.on_commit(enqueue_profile)
     return dataset
