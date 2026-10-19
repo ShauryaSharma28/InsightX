@@ -38,7 +38,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV, JSON, and 
 
 ### Backend
 
-The frontend works on its own and keeps imported files in the browser until a signed-in user chooses **Save to account**. The API offers both stateless profiling and profiling for authenticated, saved datasets. Uploaded files are stored privately under `backend/media/` by default, while ownership, metadata, and cached profiles are stored in the configured database. Set `MEDIA_ROOT` to a persistent volume path for a single-server install, or choose the private S3 storage backend for shared deployments. Files above 2 MiB are profiled by a Celery worker using Redis; smaller files are profiled during upload. If the worker is unavailable, the upload is retained and its profile status reports the problem.
+The frontend works on its own and keeps imported files in the browser until a signed-in user chooses **Save to account**. The API offers both stateless profiling and profiling for authenticated, saved datasets. Uploaded files are stored privately under `backend/media/` by default, while ownership, metadata, and cached profiles are stored in the configured database. Set `MEDIA_ROOT` to a persistent volume path for a single-server install, or choose the private S3 storage backend for shared deployments. Files above 2 MiB are profiled by a Celery worker using Redis by default; for a small deployment without a worker, set `DATASET_BACKGROUND_THRESHOLD_BYTES` at least as high as `MAX_DATASET_UPLOAD_SIZE` so profiling runs during upload.
 
 From the repository root, create and activate a Python virtual environment, copy the environment template, and set a secret key:
 
@@ -54,7 +54,7 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` and copy the template with `Copy-Item .env.example .env`. The default `DB_ENGINE=sqlite` creates a local SQLite database on the first migration; it is ignored by Git. To use MySQL, set `DB_ENGINE=mysql` and configure `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT` in `.env`. Create that database before running migrations. Keep `.env` and uploaded files private, and set `DEBUG=False`, a unique `SECRET_KEY`, and production `ALLOWED_HOSTS` before deployment.
+On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` and copy the template with `Copy-Item .env.example .env`. The default `DB_ENGINE=sqlite` creates a local SQLite database on the first migration; it is ignored by Git. To use MySQL, set `DB_ENGINE=mysql` and configure `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT` in `.env`. To use PostgreSQL, set `DATABASE_URL` to its connection URL. Create that database before running migrations. Keep `.env` and uploaded files private, and set `DEBUG=False`, a unique `SECRET_KEY`, and production `ALLOWED_HOSTS` before deployment.
 
 For S3 storage, set `DATASET_STORAGE_BACKEND=s3`, `AWS_STORAGE_BUCKET_NAME`, and `AWS_S3_REGION_NAME`; set `AWS_S3_ENDPOINT_URL` for an S3-compatible provider. Credentials come from the AWS SDK environment or role chain. Keep bucket public access blocked and grant read/write access only to the API and worker identities. For local storage, mount a persistent directory and set `MEDIA_ROOT` to its path. The API serves downloads through the authenticated dataset route.
 
@@ -122,6 +122,19 @@ npm run dev
 Vite prints the local URL when the development server starts.
 
 The local frontend expects the API at `http://127.0.0.1:8000/api/v1`. Start the backend first and keep `CORS_ALLOWED_ORIGINS` in `backend/.env` set to the frontend origin. To enable accounts on the deployed GitHub Pages site, deploy the backend at a public HTTPS URL, allow the Pages origin in the backend's `CORS_ALLOWED_ORIGINS`, and add a repository variable named `VITE_API_BASE_URL` with the API base URL (for example, `https://api.example.com/api/v1`). The Pages workflow uses that variable at build time. Until it is set, the deployed site's account feature reports that it is not configured.
+
+### Free deployment (Render + Supabase)
+
+The repository includes a Render Blueprint at `render.yaml` for a free Django API service. For persistent accounts and uploaded files, pair it with a Supabase Free project for PostgreSQL and private object storage. The app remains usable on the free plans for small projects, with these limits: Render's free API sleeps after 15 minutes without traffic and can take about a minute to wake; Supabase Free includes 500 MB of database, 1 GB of file storage, and may pause projects after a week with very low database activity. Supabase Free does not include downloadable database backups. Avoid using this setup for data that needs guaranteed uptime or backups. See provider limits in [Render's free service guide](https://render.com/docs/free), [Supabase pricing](https://supabase.com/pricing), and [Supabase project pausing](https://supabase.com/docs/guides/platform/free-project-pausing).
+
+1. Create a Supabase project on the Free plan. In **Storage**, create a private bucket named `insightx-private`.
+2. In **Storage > Configuration > S3**, enable the S3 protocol and create an access key and secret key. Copy the endpoint and region shown on that S3 configuration page. The API endpoint uses the direct storage hostname, `https://<project-ref>.storage.supabase.co/storage/v1/s3`.
+3. In the Supabase **Connect** dialog, select **Session pooler** and copy its PostgreSQL URI. Replace the password placeholder with the database password; URL-encode reserved characters in that password. The session pooler works from Render's IPv4 network and supports Django's prepared statements.
+4. In Render, create a **Blueprint** from this GitHub repository and apply `render.yaml`. The blueprint sets up the free API service. Enter the Supabase values when prompted for `DATABASE_URL`, `AWS_S3_ENDPOINT_URL`, `AWS_S3_REGION_NAME`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`. Keep these values in Render's environment settings, never in Git. The blueprint selects the private bucket and configures uploads up to 20 MiB to profile inline, so a separate Redis service or paid worker isn't needed.
+5. After Render finishes deploying, open `https://<render-service>.onrender.com/api/v1/health/`. It should return a healthy status. Render automatically allows the service's `onrender.com` hostname, and CORS is restricted to the GitHub Pages site.
+6. In GitHub, open **Settings > Secrets and variables > Actions > Variables** and set `VITE_API_BASE_URL` to `https://<render-service>.onrender.com/api/v1`. Rerun the Pages workflow (or push a new commit) so it rebuilds the frontend with the API URL. Without this variable the Pages site stays in browser-only mode.
+
+Render migrates the Supabase database when the API starts. Keep the Supabase bucket private; the API authorizes every file download through the signed-in account. To run the API locally against PostgreSQL, set `DATABASE_URL`; Django enforces SSL when `DEBUG=False`.
 
 ## Available frontend commands
 
