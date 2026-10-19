@@ -76,7 +76,7 @@ Example request body:
 }
 ```
 
-The profiling request body is limited to 8 MB. Invalid headers, unsupported cell values, duplicate column names, or rows with the wrong width return HTTP 400. Anonymous profiling clients are limited to 120 requests per hour; registration and login are limited to 10 requests per hour per client, and authenticated dataset uploads are limited to 30 per day per user. Exceeding a rate limit returns HTTP 429.
+The profiling request body is limited to 8 MB. Invalid headers, unsupported cell values, duplicate column names, or rows with the wrong width return HTTP 400. Dataset uploads must match their CSV, JSON, or XLSX extension; a single file is limited to 20 MiB, 100 columns, 250,000 rows, 2 million cells, and 10,000 characters per cell. XLSX archives are checked for excessive expansion. Each account can store 100 datasets and 200 MiB by default; set `MAX_DATASET_STORAGE_PER_USER` and `MAX_DATASETS_PER_USER` in `backend/.env` to tune these limits. Anonymous profiling clients are limited to 120 requests per hour; registration and login are limited to 10 requests per hour per client, and authenticated dataset uploads are limited to 30 per day per user. Exceeding a rate limit returns HTTP 429.
 
 Example response for the request above:
 

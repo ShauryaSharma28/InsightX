@@ -112,6 +112,24 @@ class AuthenticationAndDatasetTests(TestCase):
     def test_saved_dataset_profile_requires_authentication(self):
         self.assertEqual(self.client.get('/api/v1/datasets/1/profile/').status_code, 401)
 
+    def test_dataset_upload_checks_file_content_not_only_extension(self):
+        user = get_user_model().objects.create_user(username='content-check', password='Content-pass-573!')
+        self.client.force_authenticate(user=user)
+        response = self.client.post('/api/v1/datasets/', {
+            'file': SimpleUploadedFile('report.csv', b'\x00\xffnot text'),
+        }, format='multipart')
+        self.assertEqual(response.status_code, 400)
+
+    @override_settings(MAX_DATASET_STORAGE_PER_USER=10, MAX_DATASETS_PER_USER=5)
+    def test_dataset_storage_quota_is_enforced_per_account(self):
+        user = get_user_model().objects.create_user(username='quota-user', password='Quota-pass-573!')
+        self.client.force_authenticate(user=user)
+        response = self.client.post('/api/v1/datasets/', {
+            'file': SimpleUploadedFile('small.csv', b'A\n1234567890\n'),
+        }, format='multipart')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('storage quota', str(response.data).lower())
+
     def test_public_profile_and_health_endpoints_remain_available(self):
         self.assertEqual(self.client.get('/api/v1/health/').status_code, 200)
         response = self.client.post('/api/v1/datasets/profile/', {

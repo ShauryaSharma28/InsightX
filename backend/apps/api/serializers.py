@@ -4,10 +4,14 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth import get_user_model, password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.db.models import Sum
 from django.urls import reverse
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from .models import Dataset
+from .services import validate_dataset_upload
 
 
 class CellValueField(serializers.Field):
@@ -107,27 +111,38 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     def validate_file(self, uploaded_file):
         filename = Path(uploaded_file.name.replace('\\', '/')).name
-        extension = Path(filename).suffix.lower()
-        if extension not in {'.csv', '.json', '.xlsx'}:
-            raise serializers.ValidationError('Choose a CSV, JSON, or XLSX file.')
         if uploaded_file.size == 0:
             raise serializers.ValidationError('The uploaded file is empty.')
         if uploaded_file.size > settings.MAX_DATASET_UPLOAD_SIZE:
             limit_mb = settings.MAX_DATASET_UPLOAD_SIZE // (1024 * 1024)
             raise serializers.ValidationError(f'Files must be {limit_mb} MiB or smaller.')
+        try:
+            validate_dataset_upload(uploaded_file)
+        except ValueError as error:
+            raise serializers.ValidationError(str(error)) from error
         return uploaded_file
 
     def create(self, validated_data):
         uploaded_file = validated_data.pop('file')
         original_filename = Path(uploaded_file.name.replace('\\', '/')).name
         supplied_name = validated_data.get('name', '').strip()
-        return Dataset.objects.create(
-            owner=self.context['request'].user,
-            name=(supplied_name or Path(original_filename).stem or 'Untitled dataset')[:255],
-            original_filename=original_filename[:255],
-            file_size=uploaded_file.size,
-            file=uploaded_file,
-        )
+        owner = self.context['request'].user
+        with transaction.atomic():
+            get_user_model().objects.select_for_update().only('pk').get(pk=owner.pk)
+            owner_datasets = Dataset.objects.filter(owner_id=owner.pk)
+            usage = owner_datasets.aggregate(total=Sum('file_size'))['total'] or 0
+            if owner_datasets.count() >= settings.MAX_DATASETS_PER_USER:
+                raise ValidationError({'file': f'Each account can store at most {settings.MAX_DATASETS_PER_USER} datasets.'})
+            if usage + uploaded_file.size > settings.MAX_DATASET_STORAGE_PER_USER:
+                limit_mb = settings.MAX_DATASET_STORAGE_PER_USER // (1024 * 1024)
+                raise ValidationError({'file': f'Your account storage quota is {limit_mb} MiB.'})
+            return Dataset.objects.create(
+                owner=owner,
+                name=(supplied_name or Path(original_filename).stem or 'Untitled dataset')[:255],
+                original_filename=original_filename[:255],
+                file_size=uploaded_file.size,
+                file=uploaded_file,
+            )
 
     def get_download_url(self, instance):
         path = reverse('api:dataset-download', kwargs={'pk': instance.pk})
