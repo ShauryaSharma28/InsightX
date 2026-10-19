@@ -63,7 +63,7 @@ export function parseCsv(text) {
   return rows;
 }
 
-export function parseJson(text) {
+export function parseJsonDataset(text) {
   const records = JSON.parse(text);
   if (!Array.isArray(records) || records.length === 0 || records.some(
     (record) => !record || typeof record !== 'object' || Array.isArray(record),
@@ -73,7 +73,7 @@ export function parseJson(text) {
 
   const headers = [...new Set(records.flatMap((record) => Object.keys(record)))];
   if (headers.length === 0) throw new Error('JSON records do not contain any fields');
-  return [
+  const rows = [
     headers,
     ...records.map((record) => headers.map((header) => {
       const value = record[header];
@@ -81,6 +81,11 @@ export function parseJson(text) {
       return typeof value === 'object' ? JSON.stringify(value) : String(value);
     })),
   ];
+  return { headers, rows, records };
+}
+
+export function parseJson(text) {
+  return parseJsonDataset(text).rows;
 }
 
 export function getImportErrorMessage(error, extension) {

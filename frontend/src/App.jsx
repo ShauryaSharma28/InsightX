@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
-import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJson, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
+import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
 import './App.css';
 
 function csvCell(value) {
@@ -73,14 +73,20 @@ function App() {
   const [replacementValue, setReplacementValue] = useState('');
   const [replacementEnabled, setReplacementEnabled] = useState(false);
 
-  function setDataset(fileName, rows, fileSize) {
+  function setDataset(fileName, rows, fileSize, jsonRecords = null) {
     const { headers, data } = normalizeRows(rows);
+    const jsonCellMetadata = jsonRecords ? new WeakMap(data.map((row, rowIndex) => [
+      row,
+      rows[0].map((header) => Object.hasOwn(jsonRecords[rowIndex], header)
+        ? { present: true, value: jsonRecords[rowIndex][header] }
+        : { present: false }),
+    ])) : null;
     setCopyStatus('');
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
     });
-    setPreview({ fileName, fileSize, headers, data, rowCount: data.length });
+    setPreview({ fileName, fileSize, headers, data, rowCount: data.length, jsonCellMetadata });
     setVisibleColumns(headers.map((_, index) => index));
     setChartColumn(null);
     setChartGroupColumn(firstCategory < 0 ? '' : String(firstCategory));
@@ -134,7 +140,8 @@ function App() {
     try {
       const fileText = await file.text();
       if (requestId !== importRequest.current) return;
-      const rows = extension === 'json' ? parseJson(fileText) : parseCsv(fileText);
+      const jsonDataset = extension === 'json' ? parseJsonDataset(fileText) : null;
+      const rows = jsonDataset?.rows ?? parseCsv(fileText);
       if (rows.length < 2) {
         setError('This file needs field names and at least one data row.');
         return;
@@ -142,7 +149,7 @@ function App() {
 
       setSearch('');
       setSort({ column: null, direction: 'asc' });
-      setDataset(file.name, rows, file.size);
+      setDataset(file.name, rows, file.size, jsonDataset?.records ?? null);
     } catch (cause) {
       if (requestId === importRequest.current) setError(getImportErrorMessage(cause, extension));
     } finally {
@@ -269,9 +276,19 @@ function App() {
   function downloadJson() {
     if (!preview) return;
     const headers = uniqueHeaders(selectedColumns.map((index) => preview.headers[index]));
-    const records = downloadableRows.map((row) => Object.fromEntries(
-      headers.map((header, index) => [header, row[selectedColumns[index]] ?? '']),
-    ));
+    const records = downloadableRows.map((row, rowIndex) => {
+      const sourceValues = preview.jsonCellMetadata?.get(exportRows[rowIndex]);
+      return Object.fromEntries(headers.flatMap((header, index) => {
+        const sourceColumn = selectedColumns[index];
+        const value = row[sourceColumn] ?? '';
+        const original = sourceValues?.[sourceColumn];
+        if (original?.present && value === (exportRows[rowIndex][sourceColumn] ?? '')) {
+          return [[header, original.value]];
+        }
+        if (original && !original.present && value === '') return [];
+        return [[header, value]];
+      }));
+    });
     downloadJsonFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.json`, records);
   }
 
