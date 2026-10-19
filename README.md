@@ -22,6 +22,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV, JSON, and 
 - Filter the column profile to focus on fields with missing values.
 - Identify ISO date columns and inspect their earliest and latest values.
 - Compare numeric measures across the matching rows and categories using totals or averages.
+- Switch between category comparisons and chronological trend lines, grouping ISO dates by day, month, or year.
 - Export the current chart as CSV data or a PNG image.
 - Inspect frequent repeated values in column profiles, and download a report with types, completeness, distinct counts, numeric ranges, averages, and medians.
 

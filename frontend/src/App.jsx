@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
-import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
+import { aggregateDateRows, countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
 import { parseExcelWorkbook } from './excelUtils.js';
 import './App.css';
 
@@ -63,7 +63,10 @@ function App() {
   const [editingCell, setEditingCell] = useState(null);
   const [editHistory, setEditHistory] = useState([]);
   const [chartColumn, setChartColumn] = useState(null);
+  const [chartType, setChartType] = useState('bar');
   const [chartGroupColumn, setChartGroupColumn] = useState('');
+  const [chartDateColumn, setChartDateColumn] = useState('');
+  const [chartDateBucket, setChartDateBucket] = useState('month');
   const [chartAggregate, setChartAggregate] = useState('sum');
   const [hideEmpty, setHideEmpty] = useState(false);
   const [removeDuplicates, setRemoveDuplicates] = useState(false);
@@ -94,10 +97,14 @@ function App() {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
     });
+    const firstDate = getColumnProfiles(headers, data).findIndex((column) => column.type === 'Date');
     setPreview({ fileName, fileSize, headers, data, rowCount: data.length, jsonCellMetadata });
     setVisibleColumns(headers.map((_, index) => index));
     setChartColumn(null);
+    setChartType('bar');
     setChartGroupColumn(firstCategory < 0 ? '' : String(firstCategory));
+    setChartDateColumn(firstDate < 0 ? '' : String(firstDate));
+    setChartDateBucket('month');
     setChartAggregate('sum');
     setPage(0);
     setFilterRules([{ id: 1, column: '', operator: 'contains', value: '' }]);
@@ -255,9 +262,15 @@ function App() {
     const distinct = new Set(values).size;
     return distinct > 1 && distinct < values.length && distinct <= 24;
   }) ?? [], [preview]);
+  const dateColumns = useMemo(() => getColumnProfiles(preview?.headers ?? [], preview?.data ?? [])
+    .flatMap((column, index) => column.type === 'Date' ? [{ header: column.header, index }] : []), [preview]);
   const activeChartColumn = chartColumn ?? numericColumns[0]?.index;
   const chartData = useMemo(() => {
     if (!preview || activeChartColumn === undefined) return [];
+    if (chartType === 'line') {
+      if (chartDateColumn === '') return [];
+      return aggregateDateRows(filteredData, Number(chartDateColumn), activeChartColumn, chartAggregate, chartDateBucket);
+    }
     if (chartGroupColumn === '') return filteredData.map((row, index) => ({ row, index }))
       .filter(({ row }) => {
         const value = (row[activeChartColumn] ?? '').trim();
@@ -282,7 +295,7 @@ function App() {
       label: group.label,
       value: chartAggregate === 'average' ? group.value / group.count : group.value,
     })).sort((left, right) => right.value - left.value).slice(0, 12);
-  }, [activeChartColumn, chartAggregate, chartGroupColumn, filteredData, preview]);
+  }, [activeChartColumn, chartAggregate, chartDateBucket, chartDateColumn, chartGroupColumn, chartType, filteredData, preview]);
   const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
   const visibleData = sortedData.slice(page * pageSize, (page + 1) * pageSize);
   const columnProfiles = useMemo(() => getColumnProfiles(
@@ -365,7 +378,7 @@ function App() {
   function downloadCsv() {
     if (!preview) return;
     const content = [[...selectedColumns.map((index) => preview.headers[index])], ...downloadableRows.map((row) => selectedColumns.map((index) => row[index] ?? ''))].map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`, content);
   }
 
   function downloadJson() {
@@ -384,18 +397,20 @@ function App() {
         return [[header, value]];
       }));
     });
-    downloadJsonFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.json`, records);
+    downloadJsonFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.json`, records);
   }
 
   function downloadChartData() {
     if (!preview || activeChartColumn === undefined || chartData.length === 0) return;
-    const labelHeader = chartGroupColumn === '' ? 'Label' : preview.headers[Number(chartGroupColumn)];
+    const labelHeader = chartType === 'line'
+      ? `${preview.headers[Number(chartDateColumn)]} (${chartDateBucket})`
+      : chartGroupColumn === '' ? 'Label' : preview.headers[Number(chartGroupColumn)];
     const report = [
       [labelHeader, preview.headers[activeChartColumn]],
       ...chartData.map(({ label, value }) => [label, value]),
     ];
     const content = report.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-chart-data.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-chart-data.csv`, content);
   }
 
   function downloadChartPng() {
@@ -434,7 +449,7 @@ function App() {
         const pngUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = pngUrl;
-        link.download = `${preview.fileName.replace(/\.(csv|json)$/i, '')}-chart.png`;
+        link.download = `${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-chart.png`;
         link.click();
         window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
       }, 'image/png');
@@ -483,14 +498,14 @@ function App() {
       ...columnProfiles.map((column) => [column.header, column.type, column.filled, column.missing, column.completeness, column.distinct, column.min ?? '', column.max ?? '', column.average ?? '', column.median ?? '']),
     ];
     const content = report.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-column-report.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-column-report.csv`, content);
   }
 
   function downloadIncompleteRows() {
     if (!preview) return;
     if (incompleteRows.length === 0) return;
     const content = [preview.headers, ...incompleteRows].map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-incomplete-rows.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-incomplete-rows.csv`, content);
   }
 
   function downloadSampleCsv() {
@@ -564,15 +579,25 @@ function App() {
 
             <div className="analysis-grid">
               <section className="analysis-card chart-card">
-                <div className="analysis-heading"><div><span className="section-kicker">03 <i /> QUICK VISUAL</span><h3>Compare values across groups</h3></div><span className="chart-badge">✳ LIVE SUMMARY</span></div>
+                <div className="analysis-heading"><div><span className="section-kicker">03 <i /> QUICK VISUAL</span><h3>Explore values across groups and dates</h3></div><span className="chart-badge">✳ LIVE SUMMARY</span></div>
                 <div className="chart-controls">
-                  {numericColumns.length > 0 && <label>MEASURE<select aria-label="Choose chart measure" value={activeChartColumn} onChange={(event) => setChartColumn(Number(event.target.value))}>{numericColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>}
-                  <label>GROUP BY<select aria-label="Group chart by" value={chartGroupColumn} onChange={(event) => setChartGroupColumn(event.target.value)}><option value="">Each row</option>{categoricalColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>
-                  {chartGroupColumn !== '' && <label>CALCULATION<select aria-label="Choose chart calculation" value={chartAggregate} onChange={(event) => setChartAggregate(event.target.value)}><option value="sum">Total</option><option value="average">Average</option></select></label>}
-                </div>
-                {chartData.length ? <div className="chart-wrap" ref={chartRef}><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#2b3930" /><XAxis dataKey="label" tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip cursor={{ fill: '#1d2a20' }} contentStyle={{ border: '1px solid #344335', borderRadius: 8, background: '#18221c', color: '#e4eadf', fontSize: 12 }} /><Bar dataKey="value" name={preview.headers[activeChartColumn]} fill="#b4d27c" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div> : <p className="no-chart">{numericColumns.length ? 'No matching rows with numeric values for these filters.' : 'No numeric column found. Add numeric values to create a chart.'}</p>}
-                <div className="chart-footer"><p className="chart-note">{chartGroupColumn === '' ? 'First 12 rows matching current filters' : `${chartAggregate === 'sum' ? 'Totals' : 'Averages'} across matching rows · highest values first`}</p>{chartData.length > 0 && <div className="chart-export-actions"><button className="report-button" type="button" onClick={downloadChartData}>Export chart CSV</button><button className="report-button" type="button" onClick={downloadChartPng}>Export chart PNG</button></div>}</div>
-              </section>
+  <label>VISUALIZATION<select aria-label="Choose visualization" value={chartType} onChange={(event) => setChartType(event.target.value)}><option value="bar">Bar comparison</option><option value="line">Date trend</option></select></label>
+  {numericColumns.length > 0 && <label>MEASURE<select aria-label="Choose chart measure" value={activeChartColumn} onChange={(event) => setChartColumn(Number(event.target.value))}>{numericColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>}
+  {chartType === 'line' ? <>
+    <label>DATE FIELD<select aria-label="Choose date field" value={chartDateColumn} onChange={(event) => setChartDateColumn(event.target.value)}><option value="">Choose a date field</option>{dateColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>
+    <label>TIME GRAIN<select aria-label="Choose time grain" value={chartDateBucket} onChange={(event) => setChartDateBucket(event.target.value)}><option value="day">Day</option><option value="month">Month</option><option value="year">Year</option></select></label>
+    <label>CALCULATION<select aria-label="Choose chart calculation" value={chartAggregate} onChange={(event) => setChartAggregate(event.target.value)}><option value="sum">Total</option><option value="average">Average</option></select></label>
+  </> : <>
+    <label>GROUP BY<select aria-label="Group chart by" value={chartGroupColumn} onChange={(event) => setChartGroupColumn(event.target.value)}><option value="">Each row</option>{categoricalColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>
+    {chartGroupColumn !== '' && <label>CALCULATION<select aria-label="Choose chart calculation" value={chartAggregate} onChange={(event) => setChartAggregate(event.target.value)}><option value="sum">Total</option><option value="average">Average</option></select></label>}
+  </>}
+</div>
+{chartData.length ? <div className="chart-wrap" ref={chartRef}><ResponsiveContainer width="100%" height="100%">
+  {chartType === 'line'
+    ? <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#2b3930" /><XAxis dataKey="label" interval="preserveStartEnd" tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip contentStyle={{ border: '1px solid #344335', borderRadius: 8, background: '#18221c', color: '#e4eadf', fontSize: 12 }} /><Line type="monotone" dataKey="value" name={preview.headers[activeChartColumn]} stroke="#b4d27c" strokeWidth={2} dot={{ r: 2, fill: '#b4d27c' }} activeDot={{ r: 4 }} /></LineChart>
+    : <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#2b3930" /><XAxis dataKey="label" tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip cursor={{ fill: '#1d2a20' }} contentStyle={{ border: '1px solid #344335', borderRadius: 8, background: '#18221c', color: '#e4eadf', fontSize: 12 }} /><Bar dataKey="value" name={preview.headers[activeChartColumn]} fill="#b4d27c" radius={[4, 4, 0, 0]} /></BarChart>}
+</ResponsiveContainer></div> : <p className="no-chart">{chartType === 'line' && dateColumns.length === 0 ? 'No ISO date column found. Use YYYY-MM-DD dates to create a trend chart.' : chartType === 'line' && chartDateColumn === '' ? 'Choose an ISO date column to create a trend chart.' : numericColumns.length ? 'No matching rows with numeric values for these filters.' : 'No numeric column found. Add numeric values to create a chart.'}</p>}
+<div className="chart-footer"><p className="chart-note">{chartType === 'line' ? (chartAggregate === 'sum' ? 'Totals' : 'Averages') + ' per ' + chartDateBucket + ' using ' + (preview.headers[Number(chartDateColumn)] ?? 'date field') : chartGroupColumn === '' ? 'First 12 rows matching current filters' : (chartAggregate === 'sum' ? 'Totals' : 'Averages') + ' across matching rows · highest values first'}</p>{chartData.length > 0 && <div className="chart-export-actions"><button className="report-button" type="button" onClick={downloadChartData}>Export chart CSV</button><button className="report-button" type="button" onClick={downloadChartPng}>Export chart PNG</button></div>}</div></section>
               <section className="analysis-card quality-card"><div className="analysis-heading"><div><span className="section-kicker">DATA HYGIENE</span><h3>Clean up your export</h3></div></div>
                 <label className="toggle-row"><span><strong>Hide incomplete rows</strong><small>Exclude rows with empty cells from the table</small></span><input type="checkbox" checked={hideEmpty} onChange={(event) => { setHideEmpty(event.target.checked); setPage(0); }} /></label>
                 <label className="toggle-row"><span><strong>Trim whitespace on export</strong><small>Remove leading and trailing spaces from exported cells</small></span><input type="checkbox" checked={trimWhitespace} onChange={(event) => setTrimWhitespace(event.target.checked)} /></label>

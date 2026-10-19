@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   countDuplicateRows,
+  aggregateDateRows,
   filterRows,
   getColumnProfiles,
   getImportErrorMessage,
@@ -105,4 +106,27 @@ test('getColumnProfiles identifies ISO dates and reports their range', () => {
   assert.equal(profile.min, '2024-01-15');
   assert.equal(profile.max, '2024-02-29');
   assert.equal(profile.average, null);
+});
+
+test('aggregateDateRows groups filtered numeric values by date interval in chronological order', () => {
+  const rows = [
+    ['2024-02-08', '20'],
+    ['2024-01-02', '10'],
+    ['2024-01-23', '30'],
+    ['not a date', '400'],
+    ['2024-02-10', ''],
+  ];
+
+  assert.deepEqual(aggregateDateRows(rows, 0, 1, 'sum', 'month'), [
+    { label: '2024-01', value: 40 },
+    { label: '2024-02', value: 20 },
+  ]);
+  assert.deepEqual(aggregateDateRows(rows, 0, 1, 'average', 'year'), [
+    { label: '2024', value: 20 },
+  ]);
+  assert.deepEqual(aggregateDateRows(rows, 0, 1, 'sum', 'day'), [
+    { label: '2024-01-02', value: 10 },
+    { label: '2024-01-23', value: 30 },
+    { label: '2024-02-08', value: 20 },
+  ]);
 });

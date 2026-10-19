@@ -250,6 +250,30 @@ function parseIsoDate(value) {
   return Number.isFinite(timestamp) ? { value, timestamp } : null;
 }
 
+export function aggregateDateRows(rows, dateIndex, measureIndex, aggregate = 'sum', bucket = 'month') {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const dateValue = (row[dateIndex] ?? '').trim();
+    if (!parseIsoDate(dateValue)) return;
+
+    const date = dateValue.slice(0, 10);
+    const label = bucket === 'year' ? date.slice(0, 4) : bucket === 'day' ? date : date.slice(0, 7);
+    const rawMeasure = (row[measureIndex] ?? '').trim();
+    const measure = Number(rawMeasure);
+    if (!rawMeasure || !Number.isFinite(measure)) return;
+
+    const group = groups.get(label) ?? { total: 0, count: 0 };
+    group.total += measure;
+    group.count += 1;
+    groups.set(label, group);
+  });
+
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([label, group]) => ({
+    label,
+    value: aggregate === 'average' ? group.total / group.count : group.total,
+  }));
+}
+
 export function getColumnProfiles(headers, data) {
   return headers.map((header, index) => {
     const values = data.map((row) => (row[index] ?? '').trim());
