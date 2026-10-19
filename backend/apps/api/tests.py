@@ -1,0 +1,100 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
+
+from .models import Dataset
+
+
+class AuthenticationAndDatasetTests(TestCase):
+    def setUp(self):
+        self.media_dir = TemporaryDirectory()
+        self.media_settings = override_settings(MEDIA_ROOT=self.media_dir.name)
+        self.media_settings.enable()
+        self.client = APIClient()
+
+    def tearDown(self):
+        self.media_settings.disable()
+        self.media_dir.cleanup()
+
+    def test_registration_returns_tokens_and_current_user_is_protected(self):
+        response = self.client.post('/api/v1/auth/register/', {
+            'username': 'analytics-user',
+            'email': 'analytics@example.com',
+            'password': 'Strong-Passphrase-572!',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        login = self.client.post('/api/v1/auth/token/', {
+            'username': 'analytics-user',
+            'password': 'Strong-Passphrase-572!',
+        }, format='json')
+        self.assertEqual(login.status_code, 200)
+        self.assertIn('access', login.data)
+        refresh = self.client.post('/api/v1/auth/token/refresh/', {'refresh': login.data['refresh']}, format='json')
+        self.assertEqual(refresh.status_code, 200)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
+        profile = self.client.get('/api/v1/auth/me/')
+        self.assertEqual(profile.status_code, 200)
+        self.assertEqual(profile.data['username'], 'analytics-user')
+
+        weak_password = self.client.post('/api/v1/auth/register/', {
+            'username': 'weak-password-user',
+            'password': 'password',
+        }, format='json')
+        self.assertEqual(weak_password.status_code, 400)
+
+    def test_dataset_files_are_owner_scoped_and_deleted_with_the_record(self):
+        user_model = get_user_model()
+        owner = user_model.objects.create_user(username='owner', password='Owner-pass-573!')
+        other_user = user_model.objects.create_user(username='other', password='Other-pass-573!')
+        self.client.force_authenticate(user=owner)
+        upload = SimpleUploadedFile('sales.csv', b'Region,Sales\nWest,10\n', content_type='text/csv')
+        created = self.client.post('/api/v1/datasets/', {'name': 'Sales sample', 'file': upload}, format='multipart')
+
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.data['original_filename'], 'sales.csv')
+        dataset = Dataset.objects.get(pk=created.data['id'])
+        stored_file = Path(dataset.file.path)
+        self.assertTrue(stored_file.exists())
+
+        self.client.force_authenticate(user=other_user)
+        self.assertEqual(self.client.get('/api/v1/datasets/').data, [])
+        self.assertEqual(self.client.get(f"/api/v1/datasets/{dataset.pk}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/v1/datasets/{dataset.pk}/download/").status_code, 404)
+        self.assertEqual(self.client.delete(f"/api/v1/datasets/{dataset.pk}/").status_code, 404)
+
+        self.client.force_authenticate(user=owner)
+        download = self.client.get(f"/api/v1/datasets/{dataset.pk}/download/")
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(b''.join(download.streaming_content), b'Region,Sales\nWest,10\n')
+        self.assertEqual(self.client.delete(f"/api/v1/datasets/{dataset.pk}/").status_code, 204)
+        self.assertFalse(stored_file.exists())
+
+    def test_dataset_upload_requires_authentication_and_allowed_file_type(self):
+        denied = self.client.post('/api/v1/datasets/', {
+            'file': SimpleUploadedFile('program.exe', b'not a dataset'),
+        }, format='multipart')
+        self.assertEqual(denied.status_code, 401)
+
+        user = get_user_model().objects.create_user(username='uploader', password='Uploader-pass-573!')
+        self.client.force_authenticate(user=user)
+        rejected = self.client.post('/api/v1/datasets/', {
+            'file': SimpleUploadedFile('program.exe', b'not a dataset'),
+        }, format='multipart')
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn('Choose a CSV, JSON, or XLSX file.', str(rejected.data))
+
+    def test_public_profile_and_health_endpoints_remain_available(self):
+        self.assertEqual(self.client.get('/api/v1/health/').status_code, 200)
+        response = self.client.post('/api/v1/datasets/profile/', {
+            'headers': ['Region', 'Revenue'],
+            'rows': [['West', 120], ['East', 95]],
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['rowCount'], 2)

@@ -31,14 +31,14 @@ InsightX is a browser based workspace for exploring and cleaning CSV, JSON, and 
 ## Project structure
 
 - `frontend/` — React application powered by Vite
-- `backend/` - Optional Django REST API for health checks and dataset profiling
+- `backend/` - Django REST API for health checks, profiling, JWT accounts, and owner-scoped dataset storage
 - `sample-sales.csv` — sample dataset shown on the GitHub repository home and used by the website
 
 ## Run the project locally
 
 ### Backend
 
-The frontend works on its own and keeps imported files in the browser. The optional API does not store submitted rows; it calculates a profile for each request and returns the summary.
+The frontend works on its own and keeps imported files in the browser. The API's profiling endpoint is stateless. Authenticated dataset uploads are stored as files under `backend/media/` by default, while their ownership and metadata are stored in the configured database.
 
 From the repository root, create and activate a Python virtual environment, copy the environment template, and set a secret key:
 
@@ -54,11 +54,16 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` and copy the template with `Copy-Item .env.example .env`. Django creates a local SQLite database on the first migration; it is ignored by Git. Set `DEBUG=False`, a unique `SECRET_KEY`, and production `ALLOWED_HOSTS` before deploying the API.
+On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` and copy the template with `Copy-Item .env.example .env`. The default `DB_ENGINE=sqlite` creates a local SQLite database on the first migration; it is ignored by Git. To use MySQL, set `DB_ENGINE=mysql` and configure `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT` in `.env`. Create that database before running migrations. Keep `.env` and uploaded files private, and set `DEBUG=False`, a unique `SECRET_KEY`, and production `ALLOWED_HOSTS` before deployment.
 
 #### Backend API
 
 - `GET /api/v1/health/` returns the service health status.
+- `POST /api/v1/auth/register/` creates an account and returns an access and refresh JWT. Send `username`, `password`, and an optional `email`.
+- `POST /api/v1/auth/token/` exchanges a username and password for JWTs; `POST /api/v1/auth/token/refresh/` refreshes an access token.
+- `GET /api/v1/auth/me/` returns the authenticated user's account details.
+- `POST /api/v1/datasets/` accepts `multipart/form-data` with a `file` field containing a CSV, JSON, or XLSX file and an optional display `name`. Uploads are limited to 20 MiB by default.
+- `GET /api/v1/datasets/` lists only the authenticated user's datasets. `GET /api/v1/datasets/<id>/` returns its metadata, `GET /api/v1/datasets/<id>/download/` downloads its file, and `DELETE /api/v1/datasets/<id>/` deletes it. Send `Authorization: Bearer <access-token>` to these endpoints.
 - `POST /api/v1/datasets/profile/` profiles a JSON table. Send `headers` (1–100 unique names) and `rows` (up to 10,000 rows, each matching the header width). Responses include row and column counts, duplicate rows, missing values, frequent values, and numeric or ISO date summaries. Anonymous requests are rate-limited.
 
 Example request body:
@@ -70,7 +75,7 @@ Example request body:
 }
 ```
 
-The request body is limited to 8 MB. Invalid headers, unsupported cell values, duplicate column names, or rows with the wrong width return HTTP 400. Anonymous clients are limited to 120 requests per hour; exceeding the limit returns HTTP 429.
+The profiling request body is limited to 8 MB. Invalid headers, unsupported cell values, duplicate column names, or rows with the wrong width return HTTP 400. Anonymous profiling clients are limited to 120 requests per hour; registration and login are limited to 10 requests per hour per client, and authenticated dataset uploads are limited to 30 per day per user. Exceeding a rate limit returns HTTP 429.
 
 Example response for the request above:
 
@@ -86,7 +91,9 @@ Example response for the request above:
 }
 ```
 
-The current browser app continues to analyze files locally and does not call this API.
+The current browser app continues to analyze files locally. The authenticated account and dataset storage features are exposed through the API; the browser UI does not upload files to them.
+
+Run backend checks and API tests from the repository root with `python backend/manage.py check` and `python backend/manage.py test insightx_api`.
 
 ### Frontend
 

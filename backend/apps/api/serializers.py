@@ -1,6 +1,13 @@
 import math
+from pathlib import Path
 
+from django.conf import settings
+from django.contrib.auth import get_user_model, password_validation
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.urls import reverse
 from rest_framework import serializers
+
+from .models import Dataset
 
 
 class CellValueField(serializers.Field):
@@ -57,3 +64,72 @@ class DatasetProfileSerializer(serializers.Serializer):
                     'rows': f'Row {row_number} has {len(row)} cells; expected {width}.'
                 })
         return attrs
+
+
+class UserRegistrationSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField(required=False, allow_blank=True, max_length=254)
+    password = serializers.CharField(write_only=True, min_length=8, trim_whitespace=False)
+
+    def validate_username(self, value):
+        user_model = get_user_model()
+        if user_model._default_manager.filter(username__iexact=value).exists():
+            raise serializers.ValidationError('A user with this username already exists.')
+        return value
+
+    def validate(self, attrs):
+        user_model = get_user_model()
+        prospective_user = user_model(username=attrs['username'], email=attrs.get('email', ''))
+        try:
+            password_validation.validate_password(attrs['password'], prospective_user)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
+        return attrs
+
+    def create(self, validated_data):
+        user_model = get_user_model()
+        return user_model.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data.get('email', ''),
+            password=validated_data['password'],
+        )
+
+
+class DatasetSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    file = serializers.FileField(write_only=True)
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Dataset
+        fields = ['id', 'name', 'original_filename', 'file_size', 'created_at', 'download_url', 'file']
+        read_only_fields = ['id', 'original_filename', 'file_size', 'created_at', 'download_url']
+
+    def validate_file(self, uploaded_file):
+        filename = Path(uploaded_file.name.replace('\\', '/')).name
+        extension = Path(filename).suffix.lower()
+        if extension not in {'.csv', '.json', '.xlsx'}:
+            raise serializers.ValidationError('Choose a CSV, JSON, or XLSX file.')
+        if uploaded_file.size == 0:
+            raise serializers.ValidationError('The uploaded file is empty.')
+        if uploaded_file.size > settings.MAX_DATASET_UPLOAD_SIZE:
+            limit_mb = settings.MAX_DATASET_UPLOAD_SIZE // (1024 * 1024)
+            raise serializers.ValidationError(f'Files must be {limit_mb} MiB or smaller.')
+        return uploaded_file
+
+    def create(self, validated_data):
+        uploaded_file = validated_data.pop('file')
+        original_filename = Path(uploaded_file.name.replace('\\', '/')).name
+        supplied_name = validated_data.get('name', '').strip()
+        return Dataset.objects.create(
+            owner=self.context['request'].user,
+            name=(supplied_name or Path(original_filename).stem or 'Untitled dataset')[:255],
+            original_filename=original_filename[:255],
+            file_size=uploaded_file.size,
+            file=uploaded_file,
+        )
+
+    def get_download_url(self, instance):
+        path = reverse('api:dataset-download', kwargs={'pk': instance.pk})
+        request = self.context.get('request')
+        return request.build_absolute_uri(path) if request else path
