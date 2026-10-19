@@ -58,4 +58,4 @@ jobs:
       - name: Check for missing migrations
         run: python backend/manage.py makemigrations --check --dry-run
       - name: Run API tests
-        run: python backend/manage.py test insightx_api
+        run: python backend/manage.py test apps.api
