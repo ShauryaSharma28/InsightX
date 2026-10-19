@@ -22,8 +22,8 @@ jobs:
       SECRET_KEY: ci-only-not-for-production
       DB_ENGINE: mysql
       DB_NAME: insightx
-      DB_USER: insightx_ci
-      DB_PASSWORD: insightx-ci-password
+      DB_USER: root
+      DB_PASSWORD: insightx-root-ci-password
       DB_HOST: 127.0.0.1
       DB_PORT: 3306
     services:
@@ -31,9 +31,8 @@ jobs:
         image: mysql:8.4
         env:
           MYSQL_DATABASE: insightx
-          MYSQL_USER: insightx_ci
-          MYSQL_PASSWORD: insightx-ci-password
           MYSQL_ROOT_PASSWORD: insightx-root-ci-password
+          MYSQL_ROOT_HOST: '%'
         ports:
           - 3306:3306
         options: >-
