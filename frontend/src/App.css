@@ -221,12 +221,16 @@ td { color: #d0d9cf; }
 .column-picker-menu label { color: #d0dbce; }
 .column-picker-menu label:hover { background: #253227; }
 .filter-toolbar input:disabled { background: #1b241e; color: #89968a; }
+.table-controls .copy-view-button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.table-control-actions { flex-wrap: wrap; }
 .pagination { color: #aab6a8; }
 footer { color: #859388; }
 
 @media (max-width: 700px) {
   .app-shell { width: min(100% - 36px, 560px); }
   .workspace { box-shadow: 0 18px 50px rgb(0 0 0 / 22%); }
+  .table-controls { align-items: flex-start; flex-direction: column; }
+  .table-control-actions { justify-content: flex-start; }
 }
 
 /* Interface polish */

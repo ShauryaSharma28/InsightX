@@ -58,6 +58,7 @@ function App() {
   const [pageSize, setPageSize] = useState(12);
   const [editingEnabled, setEditingEnabled] = useState(false);
   const [editingCell, setEditingCell] = useState(null);
+  const [editHistory, setEditHistory] = useState([]);
   const [chartColumn, setChartColumn] = useState(null);
   const [chartGroupColumn, setChartGroupColumn] = useState('');
   const [chartAggregate, setChartAggregate] = useState('sum');
@@ -86,6 +87,7 @@ function App() {
     setCopyStatus('');
     setEditingEnabled(false);
     setEditingCell(null);
+    setEditHistory([]);
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
@@ -272,6 +274,10 @@ function App() {
   }
 
   function commitCellEdit(rowIndex, columnIndex, value) {
+    const previousValue = preview?.data[rowIndex]?.[columnIndex];
+    if (previousValue !== undefined && previousValue !== value) {
+      setEditHistory((current) => [...current, { rowIndex, columnIndex, before: previousValue }].slice(-100));
+    }
     setPreview((current) => {
       if (!current || current.data[rowIndex]?.[columnIndex] === value) return current;
       const previousRow = current.data[rowIndex];
@@ -286,6 +292,24 @@ function App() {
       return { ...current, data };
     });
     setEditingCell(null);
+  }
+
+  function undoCellEdit() {
+    const previousEdit = editHistory.at(-1);
+    if (!previousEdit) return;
+    setPreview((current) => {
+      const previousRow = current?.data[previousEdit.rowIndex];
+      if (!previousRow) return current;
+      const nextRow = [...previousRow];
+      nextRow[previousEdit.columnIndex] = previousEdit.before;
+      if (current.jsonCellMetadata) {
+        current.jsonCellMetadata.set(nextRow, current.jsonCellMetadata.get(previousRow));
+      }
+      const data = [...current.data];
+      data[previousEdit.rowIndex] = nextRow;
+      return { ...current, data };
+    });
+    setEditHistory((current) => current.slice(0, -1));
   }
 
   function downloadCsv() {
@@ -537,7 +561,7 @@ function App() {
               <label className="filter-value">Value<input value={filterValue} disabled={filterOperator === 'empty' || filterOperator === 'notEmpty'} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder={filterOperator === 'empty' || filterOperator === 'notEmpty' ? 'Not needed' : 'Type a value'} /></label>
               <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
             </div>
-            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><button className="copy-view-button" type="button" aria-pressed={editingEnabled} onClick={() => { setEditingCell(null); setEditingEnabled((current) => !current); }}>{editingEnabled ? 'Done editing' : 'Edit data'}</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><button className="copy-view-button" type="button" aria-pressed={editingEnabled} onClick={() => { setEditingCell(null); setEditingEnabled((current) => !current); }}>{editingEnabled ? 'Done editing' : 'Edit data'}</button><button className="copy-view-button" type="button" onClick={undoCellEdit} disabled={editHistory.length === 0 || editingCell !== null}>Undo edit{editHistory.length > 0 ? ` (${editHistory.length})` : ''}</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
             {copyStatus && <p className="copy-status" role="status">{copyStatus}</p>}
 
             <div className="table-scroll">
