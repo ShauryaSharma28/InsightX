@@ -38,7 +38,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV, JSON, and 
 
 ### Backend
 
-The frontend works on its own and keeps imported files in the browser. The API offers both stateless profiling and profiling for authenticated, saved datasets. Uploaded files are stored privately under `backend/media/` by default, while ownership, metadata, and cached profiles are stored in the configured database. Set `MEDIA_ROOT` to a persistent volume path for a single-server install, or choose the private S3 storage backend for shared deployments. Files above 2 MiB are profiled by a Celery worker using Redis; smaller files are profiled during upload. If the worker is unavailable, the upload is retained and its profile status reports the problem.
+The frontend works on its own and keeps imported files in the browser until a signed-in user chooses **Save to account**. The API offers both stateless profiling and profiling for authenticated, saved datasets. Uploaded files are stored privately under `backend/media/` by default, while ownership, metadata, and cached profiles are stored in the configured database. Set `MEDIA_ROOT` to a persistent volume path for a single-server install, or choose the private S3 storage backend for shared deployments. Files above 2 MiB are profiled by a Celery worker using Redis; smaller files are profiled during upload. If the worker is unavailable, the upload is retained and its profile status reports the problem.
 
 From the repository root, create and activate a Python virtual environment, copy the environment template, and set a secret key:
 
@@ -95,7 +95,7 @@ Example response for the request above:
 }
 ```
 
-The current browser app continues to analyze files locally. The authenticated account and dataset storage features are exposed through the API; the browser UI does not upload files to them.
+The browser continues to analyze and edit data locally. Signing in adds an account panel for saved datasets; choosing **Save to account** uploads the original file to the API, where it is stored under that account and profiled. Opening a saved dataset downloads it back into the local workspace. Changes made in the local table are not uploaded to the saved copy.
 
 Schedule `python manage.py flushexpiredtokens` daily from the `backend/` directory to remove expired refresh-token records.
 
@@ -107,11 +107,11 @@ celery -A config worker --loglevel=info
 
 On Windows, run the worker with the solo pool: `celery -A config worker --pool=solo --loglevel=info`.
 
-Run backend checks and API tests from the repository root with `python backend/manage.py check` and `python backend/manage.py test insightx_api`.
+Run backend checks and API tests from the repository root with `python backend/manage.py check` and `python backend/manage.py test apps.api`.
 
 ### Frontend
 
-In a second terminal, install dependencies and start the Vite development server:
+In a second terminal, copy `frontend/.env.example` to `frontend/.env.local` if you want to override the local API URL. Install dependencies and start the Vite development server:
 
 ```bash
 cd frontend
@@ -120,6 +120,8 @@ npm run dev
 ```
 
 Vite prints the local URL when the development server starts.
+
+The local frontend expects the API at `http://127.0.0.1:8000/api/v1`. Start the backend first and keep `CORS_ALLOWED_ORIGINS` in `backend/.env` set to the frontend origin. To enable accounts on the deployed GitHub Pages site, deploy the backend at a public HTTPS URL, allow the Pages origin in the backend's `CORS_ALLOWED_ORIGINS`, and add a repository variable named `VITE_API_BASE_URL` with the API base URL (for example, `https://api.example.com/api/v1`). The Pages workflow uses that variable at build time. Until it is set, the deployed site's account feature reports that it is not configured.
 
 ## Available frontend commands
 
