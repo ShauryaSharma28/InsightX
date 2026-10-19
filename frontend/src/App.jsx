@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import sampleCsv from '../../sample-sales.csv?raw';
 import { aggregateDateRows, countDuplicateRows, filterRows, getAutomaticInsights, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
 import { parseExcelWorkbook } from './excelUtils.js';
+import { deleteWorkspace, getDatasetSignature, listWorkspaces, saveWorkspace } from './localWorkspaces.js';
 import './App.css';
 
 function csvCell(value) {
@@ -80,6 +81,10 @@ function App() {
   const [replacementFind, setReplacementFind] = useState('');
   const [replacementValue, setReplacementValue] = useState('');
   const [replacementEnabled, setReplacementEnabled] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState('');
+  const [savedWorkspaces, setSavedWorkspaces] = useState([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState('');
+  const [workspaceMessage, setWorkspaceMessage] = useState('');
 
   function setDataset(fileName, rows, fileSize, jsonRecords = null) {
     const { headers, data } = normalizeRows(rows);
@@ -99,6 +104,9 @@ function App() {
     });
     const firstDate = getColumnProfiles(headers, data).findIndex((column) => column.type === 'Date');
     setPreview({ fileName, fileSize, headers, data, rowCount: data.length, jsonCellMetadata });
+    setSavedWorkspaces(listWorkspaces(getDatasetSignature(fileName, headers, data.length)));
+    setActiveWorkspaceId('');
+    setWorkspaceMessage('');
     setVisibleColumns(headers.map((_, index) => index));
     setChartColumn(null);
     setChartType('bar');
@@ -176,6 +184,113 @@ function App() {
       if (requestId === importRequest.current) setError(getImportErrorMessage(cause, extension));
     } finally {
       if (requestId === importRequest.current) setIsLoading(false);
+    }
+  }
+
+  function saveCurrentWorkspace() {
+    if (!preview) return;
+    try {
+      const signature = getDatasetSignature(preview.fileName, preview.headers, preview.rowCount);
+      const saved = saveWorkspace({
+        name: workspaceName,
+        fileName: preview.fileName,
+        signature,
+        settings: {
+          search,
+          sort,
+          pageSize,
+          visibleColumns,
+          filterRules,
+          filterMode,
+          hideEmpty,
+          removeDuplicates,
+          trimWhitespace,
+          chartColumn,
+          chartType,
+          chartGroupColumn,
+          chartDateColumn,
+          chartDateBucket,
+          chartAggregate,
+          showIncompleteColumns,
+          profileCurrentView,
+          replacementColumn,
+          replacementFind,
+          replacementValue,
+          replacementEnabled,
+        },
+      });
+      setSavedWorkspaces(listWorkspaces(signature));
+      setActiveWorkspaceId(saved.id);
+      setWorkspaceName(saved.name);
+      setWorkspaceMessage(`Saved “${saved.name}” on this device.`);
+    } catch (cause) {
+      setWorkspaceMessage(cause instanceof Error ? cause.message : 'The workspace could not be saved.');
+    }
+  }
+
+  function restoreSavedWorkspace() {
+    const saved = savedWorkspaces.find((workspace) => workspace.id === activeWorkspaceId);
+    if (!preview || !saved) return;
+    const settings = saved.settings;
+    const allowedOperators = new Set([
+      'contains', 'startsWith', 'endsWith', 'equals', 'notEquals', 'greater', 'less',
+      'dateAfter', 'dateBefore', 'dateOnOrAfter', 'dateOnOrBefore', 'empty', 'notEmpty',
+    ]);
+    const restoredRules = Array.isArray(settings.filterRules) ? settings.filterRules.filter((rule) => rule && typeof rule === 'object').slice(0, 5).map((rule, index) => ({
+      id: index + 1,
+      column: rule.column !== '' && Number.isInteger(Number(rule.column)) && Number(rule.column) >= 0 && Number(rule.column) < preview.headers.length ? String(rule.column) : '',
+      operator: allowedOperators.has(rule.operator) ? rule.operator : 'contains',
+      value: String(rule.value ?? ''),
+    })) : [];
+    const visible = Array.isArray(settings.visibleColumns)
+      ? [...new Set(settings.visibleColumns.filter((index) => Number.isInteger(index) && index >= 0 && index < preview.headers.length))]
+      : [];
+    const dateProfileIndexes = new Set(getColumnProfiles(preview.headers, preview.data)
+      .flatMap((column, index) => column.type === 'Date' ? [index] : []));
+    const allowedPageSizes = new Set([12, 24, 50, 100, 250]);
+
+    setSearch(typeof settings.search === 'string' ? settings.search : '');
+    setSort({
+      column: Number.isInteger(settings.sort?.column) && settings.sort.column >= 0 && settings.sort.column < preview.headers.length ? settings.sort.column : null,
+      direction: settings.sort?.direction === 'desc' ? 'desc' : 'asc',
+    });
+    setPageSize(allowedPageSizes.has(settings.pageSize) ? settings.pageSize : 12);
+    setVisibleColumns(visible.length > 0 ? visible : preview.headers.map((_, index) => index));
+    setFilterRules(restoredRules.length > 0 ? restoredRules : [{ id: 1, column: '', operator: 'contains', value: '' }]);
+    nextFilterId.current = Math.max(2, restoredRules.length + 1);
+    setFilterMode(settings.filterMode === 'any' ? 'any' : 'all');
+    setHideEmpty(Boolean(settings.hideEmpty));
+    setRemoveDuplicates(Boolean(settings.removeDuplicates));
+    setTrimWhitespace(Boolean(settings.trimWhitespace));
+    setChartColumn(Number.isInteger(settings.chartColumn) && settings.chartColumn >= 0 && settings.chartColumn < preview.headers.length ? settings.chartColumn : null);
+    setChartType(settings.chartType === 'line' ? 'line' : 'bar');
+    setChartGroupColumn(typeof settings.chartGroupColumn === 'string' ? settings.chartGroupColumn : '');
+    setChartDateColumn(settings.chartDateColumn !== '' && dateProfileIndexes.has(Number(settings.chartDateColumn)) ? String(settings.chartDateColumn) : '');
+    setChartDateBucket(['day', 'month', 'year'].includes(settings.chartDateBucket) ? settings.chartDateBucket : 'month');
+    setChartAggregate(settings.chartAggregate === 'average' ? 'average' : 'sum');
+    setShowIncompleteColumns(Boolean(settings.showIncompleteColumns));
+    setProfileCurrentView(Boolean(settings.profileCurrentView));
+    setReplacementColumn(typeof settings.replacementColumn === 'string' ? settings.replacementColumn : '');
+    setReplacementFind(typeof settings.replacementFind === 'string' ? settings.replacementFind : '');
+    setReplacementValue(typeof settings.replacementValue === 'string' ? settings.replacementValue : '');
+    setReplacementEnabled(Boolean(settings.replacementEnabled));
+    setEditingEnabled(false);
+    setEditingCell(null);
+    setPage(0);
+    setWorkspaceName(saved.name);
+    setWorkspaceMessage(`Restored “${saved.name}”.`);
+  }
+
+  function removeSavedWorkspace() {
+    if (!activeWorkspaceId) return;
+    try {
+      const signature = getDatasetSignature(preview.fileName, preview.headers, preview.rowCount);
+      deleteWorkspace(activeWorkspaceId);
+      setSavedWorkspaces(listWorkspaces(signature));
+      setActiveWorkspaceId('');
+      setWorkspaceMessage('Saved workspace removed from this device.');
+    } catch {
+      setWorkspaceMessage('The saved workspace could not be removed.');
     }
   }
 
@@ -577,6 +692,19 @@ function App() {
                 <span aria-hidden="true">↓</span> Export {removeDuplicates || replacementEnabled ? 'cleaned CSV' : 'CSV'} ({downloadableRows.length.toLocaleString()})
               </button>
             </div>
+
+            <section className="workspace-saver" aria-label="Saved analysis workspaces">
+              <div className="workspace-saver-heading"><div><span className="section-kicker">PICK UP WHERE YOU LEFT OFF</span><h3>Saved workspaces</h3></div><span>Saved in this browser</span></div>
+              <div className="workspace-save-controls">
+                <label>Save current view as<input value={workspaceName} maxLength={80} onChange={(event) => setWorkspaceName(event.target.value)} placeholder="e.g. Monthly sales review" /></label>
+                <button className="report-button" type="button" onClick={saveCurrentWorkspace}>Save view</button>
+                <label>Saved views<select value={activeWorkspaceId} onChange={(event) => { setActiveWorkspaceId(event.target.value); const selected = savedWorkspaces.find((workspace) => workspace.id === event.target.value); if (selected) setWorkspaceName(selected.name); }}><option value="">Choose a saved view</option>{savedWorkspaces.map((workspace) => <option value={workspace.id} key={workspace.id}>{workspace.name}</option>)}</select></label>
+                <button className="report-button" type="button" onClick={restoreSavedWorkspace} disabled={!activeWorkspaceId}>Restore view</button>
+                <button className="report-button" type="button" onClick={removeSavedWorkspace} disabled={!activeWorkspaceId}>Delete view</button>
+              </div>
+              <p className="workspace-saver-note">Filters, columns, and chart settings are saved locally. Reopen the original file to restore its view; dataset rows are not saved here.</p>
+              {workspaceMessage && <p className="workspace-saver-message" role="status">{workspaceMessage}</p>}
+            </section>
 
             <div className="analysis-grid">
               <section className="analysis-card chart-card">
