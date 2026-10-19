@@ -38,7 +38,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV, JSON, and 
 
 ### Backend
 
-The frontend works on its own and keeps imported files in the browser. The API offers both stateless profiling and profiling for authenticated, saved datasets. Uploaded files are stored privately under `backend/media/` by default, while ownership, metadata, and cached profiles are stored in the configured database. Files above 2 MiB are profiled by a Celery worker using Redis; smaller files are profiled during upload. If the worker is unavailable, the upload is retained and its profile status reports the problem.
+The frontend works on its own and keeps imported files in the browser. The API offers both stateless profiling and profiling for authenticated, saved datasets. Uploaded files are stored privately under `backend/media/` by default, while ownership, metadata, and cached profiles are stored in the configured database. Set `MEDIA_ROOT` to a persistent volume path for a single-server install, or choose the private S3 storage backend for shared deployments. Files above 2 MiB are profiled by a Celery worker using Redis; smaller files are profiled during upload. If the worker is unavailable, the upload is retained and its profile status reports the problem.
 
 From the repository root, create and activate a Python virtual environment, copy the environment template, and set a secret key:
 
@@ -56,11 +56,14 @@ python manage.py runserver
 
 On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` and copy the template with `Copy-Item .env.example .env`. The default `DB_ENGINE=sqlite` creates a local SQLite database on the first migration; it is ignored by Git. To use MySQL, set `DB_ENGINE=mysql` and configure `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT` in `.env`. Create that database before running migrations. Keep `.env` and uploaded files private, and set `DEBUG=False`, a unique `SECRET_KEY`, and production `ALLOWED_HOSTS` before deployment.
 
+For S3 storage, set `DATASET_STORAGE_BACKEND=s3`, `AWS_STORAGE_BUCKET_NAME`, and `AWS_S3_REGION_NAME`; set `AWS_S3_ENDPOINT_URL` for an S3-compatible provider. Credentials come from the AWS SDK environment or role chain. Keep bucket public access blocked and grant read/write access only to the API and worker identities. For local storage, mount a persistent directory and set `MEDIA_ROOT` to its path. The API serves downloads through the authenticated dataset route.
+
 #### Backend API
 
 - `GET /api/v1/health/` returns the service health status.
 - `POST /api/v1/auth/register/` creates an account and returns an access and refresh JWT. Send `username`, `password`, and an optional `email`.
-- `POST /api/v1/auth/token/` exchanges a username and password for JWTs; `POST /api/v1/auth/token/refresh/` refreshes an access token.
+- `POST /api/v1/auth/token/` exchanges a username and password for JWTs; `POST /api/v1/auth/token/refresh/` rotates a refresh token and returns a new pair. Reuse of the rotated token is rejected.
+- `POST /api/v1/auth/logout/` accepts the current refresh token and blacklists it. Send a valid access token in the `Authorization` header; tokens from other accounts are rejected. Access tokens expire after 15 minutes.
 - `GET /api/v1/auth/me/` returns the authenticated user's account details.
 - `POST /api/v1/datasets/` accepts `multipart/form-data` with a `file` field containing a CSV, JSON, or XLSX file and an optional display `name`. Uploads are limited to 20 MiB by default.
 - `GET /api/v1/datasets/` lists only the authenticated user's datasets. Upload responses include `profile_status` (`pending`, `processing`, `ready`, or `failed`). `GET /api/v1/datasets/<id>/` returns its metadata, `GET /api/v1/datasets/<id>/download/` downloads its file, and `DELETE /api/v1/datasets/<id>/` deletes it. Send `Authorization: Bearer <access-token>` to these endpoints.
@@ -93,6 +96,8 @@ Example response for the request above:
 ```
 
 The current browser app continues to analyze files locally. The authenticated account and dataset storage features are exposed through the API; the browser UI does not upload files to them.
+
+Schedule `python manage.py flushexpiredtokens` daily from the `backend/` directory to remove expired refresh-token records.
 
 For files above `DATASET_BACKGROUND_THRESHOLD_BYTES` (2 MiB by default), start Redis and a worker from the `backend/` directory in a second terminal. Set `CELERY_BROKER_URL` if Redis is not at its default local address.
 

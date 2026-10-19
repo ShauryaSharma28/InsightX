@@ -40,6 +40,9 @@ class AuthenticationAndDatasetTests(TestCase):
         self.assertIn('access', login.data)
         refresh = self.client.post('/api/v1/auth/token/refresh/', {'refresh': login.data['refresh']}, format='json')
         self.assertEqual(refresh.status_code, 200)
+        self.assertIn('refresh', refresh.data)
+        replay = self.client.post('/api/v1/auth/token/refresh/', {'refresh': login.data['refresh']}, format='json')
+        self.assertEqual(replay.status_code, 401)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
         profile = self.client.get('/api/v1/auth/me/')
         self.assertEqual(profile.status_code, 200)
@@ -50,6 +53,31 @@ class AuthenticationAndDatasetTests(TestCase):
             'password': 'password',
         }, format='json')
         self.assertEqual(weak_password.status_code, 400)
+
+    def test_logout_blacklists_refresh_token(self):
+        registered = self.client.post('/api/v1/auth/register/', {
+            'username': 'logout-user',
+            'password': 'Logout-Passphrase-573!',
+        }, format='json')
+        self.assertEqual(registered.status_code, 201)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {registered.data['access']}")
+        logout = self.client.post('/api/v1/auth/logout/', {'refresh': registered.data['refresh']}, format='json')
+        self.assertEqual(logout.status_code, 205)
+        replay = self.client.post('/api/v1/auth/token/refresh/', {'refresh': registered.data['refresh']}, format='json')
+        self.assertEqual(replay.status_code, 401)
+
+    def test_logout_cannot_revoke_another_accounts_refresh_token(self):
+        first = self.client.post('/api/v1/auth/register/', {
+            'username': 'first-logout-user',
+            'password': 'First-Passphrase-573!',
+        }, format='json')
+        second = self.client.post('/api/v1/auth/register/', {
+            'username': 'second-logout-user',
+            'password': 'Second-Passphrase-573!',
+        }, format='json')
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {first.data['access']}")
+        response = self.client.post('/api/v1/auth/logout/', {'refresh': second.data['refresh']}, format='json')
+        self.assertEqual(response.status_code, 403)
 
     def test_dataset_files_are_owner_scoped_and_deleted_with_the_record(self):
         user_model = get_user_model()
@@ -137,9 +165,10 @@ class AuthenticationAndDatasetTests(TestCase):
     def test_larger_dataset_upload_queues_profiling(self, enqueue_profile):
         user = get_user_model().objects.create_user(username='queue-user', password='Queue-pass-573!')
         self.client.force_authenticate(user=user)
-        response = self.client.post('/api/v1/datasets/', {
-            'file': SimpleUploadedFile('queued.csv', b'Region,Sales\nWest,10\n'),
-        }, format='multipart')
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post('/api/v1/datasets/', {
+                'file': SimpleUploadedFile('queued.csv', b'Region,Sales\nWest,10\n'),
+            }, format='multipart')
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['profile_status'], 'pending')
@@ -158,12 +187,13 @@ class AuthenticationAndDatasetTests(TestCase):
     def test_upload_survives_unavailable_background_queue(self, enqueue_profile):
         user = get_user_model().objects.create_user(username='queue-fallback', password='Queue-pass-573!')
         self.client.force_authenticate(user=user)
-        response = self.client.post('/api/v1/datasets/', {
-            'file': SimpleUploadedFile('queued.csv', b'Region,Sales\nWest,10\n'),
-        }, format='multipart')
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post('/api/v1/datasets/', {
+                'file': SimpleUploadedFile('queued.csv', b'Region,Sales\nWest,10\n'),
+            }, format='multipart')
 
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data['profile_status'], 'failed')
+        self.assertEqual(Dataset.objects.get(pk=response.data['id']).profile_status, 'failed')
         enqueue_profile.assert_called_once()
 
     def test_public_profile_and_health_endpoints_remain_available(self):

@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'apps.api',
 ]
@@ -99,6 +100,7 @@ if DB_ENGINE == 'mysql':
                 'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             },
             'CONN_MAX_AGE': 60,
+            'CONN_HEALTH_CHECKS': True,
         }
     }
 elif DB_ENGINE == 'sqlite':
@@ -150,6 +152,8 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
@@ -167,7 +171,38 @@ MAX_XLSX_ZIP_ENTRIES = 2_000
 MAX_XLSX_MAX_COMPRESSION_RATIO = 200
 DATA_UPLOAD_MAX_MEMORY_SIZE = env_int('DATA_UPLOAD_MAX_MEMORY_SIZE', 24 * 1024 * 1024)
 MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
+if not MEDIA_ROOT.is_absolute():
+    MEDIA_ROOT = BASE_DIR / MEDIA_ROOT
 MEDIA_URL = '/media/'
+DATASET_STORAGE_BACKEND = os.environ.get('DATASET_STORAGE_BACKEND', 'filesystem').strip().lower()
+FILE_UPLOAD_PERMISSIONS = 0o600
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o700
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
+if DATASET_STORAGE_BACKEND == 's3':
+    bucket_name = os.environ.get('AWS_STORAGE_BUCKET_NAME', '').strip()
+    if not bucket_name:
+        raise ImproperlyConfigured('Set AWS_STORAGE_BUCKET_NAME when DATASET_STORAGE_BACKEND=s3.')
+    s3_options = {
+        'bucket_name': bucket_name,
+        'location': os.environ.get('AWS_LOCATION', 'insightx-private').strip('/'),
+        'default_acl': None,
+        'querystring_auth': True,
+        'file_overwrite': False,
+        'object_parameters': {'CacheControl': 'private, no-store'},
+    }
+    if os.environ.get('AWS_S3_REGION_NAME'):
+        s3_options['region_name'] = os.environ['AWS_S3_REGION_NAME']
+    if os.environ.get('AWS_S3_ENDPOINT_URL'):
+        s3_options['endpoint_url'] = os.environ['AWS_S3_ENDPOINT_URL']
+    STORAGES['default'] = {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': s3_options,
+    }
+elif DATASET_STORAGE_BACKEND != 'filesystem':
+    raise ImproperlyConfigured('DATASET_STORAGE_BACKEND must be either filesystem or s3.')
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0')
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TASK_PUBLISH_RETRY = False

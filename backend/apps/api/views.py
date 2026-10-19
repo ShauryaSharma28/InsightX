@@ -7,8 +7,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .models import Dataset
 from .serializers import DatasetProfileSerializer, DatasetSerializer, UserRegistrationSerializer
@@ -71,6 +72,28 @@ class RegisterView(APIView):
 
 class RateLimitedTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [AuthRateThrottle]
+
+
+class RateLimitedTokenRefreshView(TokenRefreshView):
+    throttle_classes = [AuthRateThrottle]
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [UserRateThrottle]
+
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({'refresh': 'This field is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            token = RefreshToken(refresh_token)
+        except TokenError:
+            return Response({'detail': 'The refresh token is invalid or expired.'}, status=status.HTTP_400_BAD_REQUEST)
+        if str(token['user_id']) != str(request.user.pk):
+            return Response({'detail': 'The refresh token belongs to another account.'}, status=status.HTTP_403_FORBIDDEN)
+        token.blacklist()
+        return Response(status=status.HTTP_205_RESET_CONTENT)
 
 
 class CurrentUserView(APIView):
