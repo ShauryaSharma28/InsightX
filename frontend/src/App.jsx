@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
 import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
@@ -68,6 +68,7 @@ function App() {
   const [trimWhitespace, setTrimWhitespace] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [filterRules, setFilterRules] = useState([{ id: 1, column: '', operator: 'contains', value: '' }]);
+  const [filterMode, setFilterMode] = useState('all');
   const [showIncompleteColumns, setShowIncompleteColumns] = useState(false);
   const [profileCurrentView, setProfileCurrentView] = useState(false);
   const [replacementColumn, setReplacementColumn] = useState('');
@@ -98,6 +99,7 @@ function App() {
     setChartAggregate('sum');
     setPage(0);
     setFilterRules([{ id: 1, column: '', operator: 'contains', value: '' }]);
+    setFilterMode('all');
     nextFilterId.current = 2;
     setReplacementColumn('');
     setReplacementFind('');
@@ -197,7 +199,8 @@ function App() {
     searchTerm,
     hideEmpty,
     filterRules,
-  }), [filterRules, hideEmpty, preview, searchTerm]);
+    filterMode,
+  }), [filterMode, filterRules, hideEmpty, preview, searchTerm]);
   const sortedData = useMemo(() => sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
     const rightValue = (right[sort.column] ?? '').trim();
@@ -327,6 +330,18 @@ function App() {
     });
     setEditHistory((current) => current.slice(0, -1));
   }
+
+  useEffect(() => {
+    function handleUndoShortcut(event) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' || event.shiftKey) return;
+      if (editingCell !== null || event.target instanceof HTMLElement && event.target.matches('input, textarea, select, [contenteditable="true"]')) return;
+      if (editHistory.length === 0) return;
+      event.preventDefault();
+      undoCellEdit();
+    }
+    window.addEventListener('keydown', handleUndoShortcut);
+    return () => window.removeEventListener('keydown', handleUndoShortcut);
+  }, [editHistory, editingCell]);
 
   function downloadCsv() {
     if (!preview) return;
@@ -574,7 +589,7 @@ function App() {
             <div className="filter-toolbar">
               <div className="filter-rule-list" aria-label="Filter conditions">
                 {filterRules.map((rule, index) => <div className="filter-rule" role="group" aria-label={`Filter condition ${index + 1}`} key={rule.id}>
-                  {index > 0 && <span className="filter-rule-join" aria-label="and">AND</span>}
+                  {index > 0 && <span className="filter-rule-join" aria-label={filterMode === 'all' ? 'and' : 'or'}>{filterMode === 'all' ? 'AND' : 'OR'}</span>}
                   <label>Filter column<select value={rule.column} onChange={(event) => updateFilterRule(rule.id, 'column', event.target.value)}><option value="">All columns</option>{preview.headers.map((header, columnIndex) => <option value={columnIndex} key={columnIndex}>{header}</option>)}</select></label>
                   <label>Condition<select value={rule.operator} onChange={(event) => updateFilterRule(rule.id, 'operator', event.target.value)}><option value="contains">contains</option><option value="startsWith">starts with</option><option value="endsWith">ends with</option><option value="equals">equals</option><option value="notEquals">does not equal</option><option value="greater">greater than</option><option value="less">less than</option><option value="dateAfter">date is after</option><option value="dateBefore">date is before</option><option value="dateOnOrAfter">date is on or after</option><option value="dateOnOrBefore">date is on or before</option><option value="empty">is empty</option><option value="notEmpty">is not empty</option></select></label>
                   <label className="filter-value">Value<input type={rule.operator.startsWith('date') ? 'date' : 'text'} value={rule.value} disabled={rule.operator === 'empty' || rule.operator === 'notEmpty'} onChange={(event) => updateFilterRule(rule.id, 'value', event.target.value)} placeholder={rule.operator === 'empty' || rule.operator === 'notEmpty' ? 'Not needed' : rule.operator.startsWith('date') ? undefined : 'Type a value'} /></label>
@@ -582,10 +597,11 @@ function App() {
                 </div>)}
               </div>
               <button className="add-filter-button" type="button" onClick={addFilterRule} disabled={filterRules.length >= 5}>+ Add condition</button>
+              <label className="filter-mode">Match<select value={filterMode} onChange={(event) => { setFilterMode(event.target.value); setPage(0); }}><option value="all">All conditions</option><option value="any">Any condition</option></select></label>
               <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
-              <span className="filter-help">All conditions must match.</span>
+              <span className="filter-help">{filterMode === 'all' ? 'All conditions must match.' : 'Any one condition can match.'}</span>
             </div>
-            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><button className="copy-view-button" type="button" aria-pressed={editingEnabled} onClick={() => { setEditingCell(null); setEditingEnabled((current) => !current); }}>{editingEnabled ? 'Done editing' : 'Edit data'}</button><button className="copy-view-button" type="button" onClick={undoCellEdit} disabled={editHistory.length === 0 || editingCell !== null}>Undo edit{editHistory.length > 0 ? ` (${editHistory.length})` : ''}</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterRules([{ id: 1, column: '', operator: 'contains', value: '' }]); nextFilterId.current = 2; setPage(0); }}>Reset view</button></div></div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><button className="copy-view-button" type="button" aria-pressed={editingEnabled} onClick={() => { setEditingCell(null); setEditingEnabled((current) => !current); }}>{editingEnabled ? 'Done editing' : 'Edit data'}</button><button className="copy-view-button" type="button" onClick={undoCellEdit} aria-keyshortcuts="Control+Z Meta+Z" title="Undo edit (Ctrl+Z / Cmd+Z)" disabled={editHistory.length === 0 || editingCell !== null}>Undo edit{editHistory.length > 0 ? ` (${editHistory.length})` : ''}</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterRules([{ id: 1, column: '', operator: 'contains', value: '' }]); setFilterMode('all'); nextFilterId.current = 2; setPage(0); }}>Reset view</button></div></div>
             {copyStatus && <p className="copy-status" role="status">{copyStatus}</p>}
 
             <div className="table-scroll">

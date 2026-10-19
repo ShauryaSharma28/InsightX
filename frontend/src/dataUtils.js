@@ -127,6 +127,7 @@ export function filterRows(rows, {
   filterOperator = 'contains',
   filterValue = '',
   filterRules = [],
+  filterMode = 'all',
 } = {}) {
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const target = filterValue.trim();
@@ -167,8 +168,13 @@ export function filterRows(rows, {
       });
   }
 
-  const matchesFilters = filterRules.length > 0
-    ? (values) => filterRules.every((rule) => matchesRule(values, rule))
+  const activeFilterRules = filterRules.filter((rule) =>
+    ['empty', 'notEmpty'].includes(rule.operator) || String(rule.value ?? '').trim() !== '',
+  );
+  const matchesFilters = activeFilterRules.length > 0
+    ? (values) => filterMode === 'any'
+      ? activeFilterRules.some((rule) => matchesRule(values, rule))
+      : activeFilterRules.every((rule) => matchesRule(values, rule))
     : (values) => filterOperator === 'empty' || filterOperator === 'notEmpty'
       ? (() => {
         const cells = filterColumn === '' ? values : [values[Number(filterColumn)] ?? ''];
