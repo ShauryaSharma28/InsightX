@@ -138,6 +138,20 @@ export function filterRows(rows, {
     if (rule.operator === 'notEmpty') return cells.every((value) => (value ?? '').trim() !== '');
     if (ruleTarget === '') return true;
 
+    if (rule.operator.startsWith('date')) {
+      const targetDate = parseIsoDate(ruleTarget);
+      if (!targetDate) return false;
+      return cells.some((value) => {
+        const cellDate = parseIsoDate((value ?? '').trim());
+        if (!cellDate) return false;
+        if (rule.operator === 'dateAfter') return cellDate.timestamp > targetDate.timestamp;
+        if (rule.operator === 'dateBefore') return cellDate.timestamp < targetDate.timestamp;
+        if (rule.operator === 'dateOnOrAfter') return cellDate.timestamp >= targetDate.timestamp;
+        if (rule.operator === 'dateOnOrBefore') return cellDate.timestamp <= targetDate.timestamp;
+        return false;
+      });
+    }
+
     return rule.operator === 'notEquals'
       ? cells.every((value) => (value ?? '').trim().toLowerCase() !== ruleTarget.toLowerCase())
       : cells.some((value) => {
