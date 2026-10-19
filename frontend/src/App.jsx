@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
-import { aggregateDateRows, countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
+import { aggregateDateRows, countDuplicateRows, filterRows, getAutomaticInsights, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
 import { parseExcelWorkbook } from './excelUtils.js';
 import './App.css';
 
@@ -216,6 +216,7 @@ function App() {
     filterRules,
     filterMode,
   }), [filterMode, filterRules, hideEmpty, preview, searchTerm]);
+  const automaticInsights = useMemo(() => getAutomaticInsights(preview?.headers ?? [], filteredData), [filteredData, preview]);
   const sortedData = useMemo(() => sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
     const rightValue = (right[sort.column] ?? '').trim();
@@ -637,6 +638,13 @@ function App() {
               <article className="insight-card"><span className="insight-label">EMPTY CELLS</span><strong>{missingCells.toLocaleString()}</strong><span className="insight-caption">{missingCells === 0 ? 'looking complete' : 'worth a closer look'}</span><span className="insight-icon yellow">◌</span></article>
               <article className="insight-card"><span className="insight-label">DUPLICATE ROWS</span><strong>{duplicateRows.toLocaleString()}</strong><span className="insight-caption">{duplicateRows === 0 ? 'no repeats found' : 'repeated records'}</span><span className="insight-icon green">⧉</span></article>
             </div>
+
+            <section className="automatic-insights" aria-labelledby="automatic-insights-title">
+              <div className="automatic-insights-heading"><div><span className="section-kicker">PATTERN SCAN</span><h3 id="automatic-insights-title">Signals in this view</h3></div><p>{filteredData.length.toLocaleString()} matching rows analysed</p></div>
+              {automaticInsights.length > 0
+                ? <div className="automatic-insight-grid">{automaticInsights.map((insight) => <article className="automatic-insight-card" key={`${insight.title}-${insight.field}`}><span>{insight.title}</span><strong>{insight.field}</strong><p>{insight.summary}</p></article>)}</div>
+                : <p className="automatic-insights-empty">No strong patterns found in this view. Try widening the filters or loading more rows.</p>}
+            </section>
 
             <div className="table-heading" id="rows">
               <div><span className="section-kicker">02 <i /> EXPLORE YOUR DATA</span><h3>Rows &amp; columns</h3></div>

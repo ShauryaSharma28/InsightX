@@ -315,3 +315,65 @@ export function getColumnProfiles(headers, data) {
     };
   });
 }
+
+export function getAutomaticInsights(headers, rows) {
+  if (rows.length === 0 || headers.length === 0) return [];
+
+  const profiles = getColumnProfiles(headers, rows);
+  const insights = [];
+  const incompleteColumn = profiles
+    .map((profile, index) => ({ ...profile, index }))
+    .filter((profile) => profile.missing > 0)
+    .sort((left, right) => right.missing - left.missing)[0];
+
+  if (incompleteColumn) {
+    insights.push({
+      title: 'Most incomplete column',
+      field: incompleteColumn.header,
+      summary: `${incompleteColumn.missing} of ${rows.length} matching rows have empty cells (${(incompleteColumn.missing * 100 / rows.length).toFixed(1)}%).`,
+    });
+  }
+
+  const commonCategory = profiles
+    .map((profile) => ({ ...profile, frequent: profile.commonValues[0] }))
+    .filter((profile) => profile.type === 'Text' && profile.frequent)
+    .sort((left, right) => right.frequent.count - left.frequent.count)[0];
+
+  if (commonCategory) {
+    const { value, count } = commonCategory.frequent;
+    insights.push({
+      title: 'Most common category',
+      field: commonCategory.header,
+      summary: `${value} appears in ${count} of ${rows.length} matching rows (${(count * 100 / rows.length).toFixed(1)}%).`,
+    });
+  }
+
+  const outlier = profiles.flatMap((profile, index) => {
+    if (profile.type !== 'Number') return [];
+    const values = rows.map((row) => (row[index] ?? '').trim()).filter(Boolean).map(Number).sort((left, right) => left - right);
+    if (values.length < 4) return [];
+    function percentile(fraction) {
+      const position = (values.length - 1) * fraction;
+      const lowerIndex = Math.floor(position);
+      const upperIndex = Math.ceil(position);
+      return values[lowerIndex] + (values[upperIndex] - values[lowerIndex]) * (position - lowerIndex);
+    }
+    const lowerQuartile = percentile(0.25);
+    const upperQuartile = percentile(0.75);
+    const spread = upperQuartile - lowerQuartile;
+    const lowerBound = lowerQuartile - spread * 1.5;
+    const upperBound = upperQuartile + spread * 1.5;
+    const count = values.filter((value) => value < lowerBound || value > upperBound).length;
+    return count > 0 ? [{ header: profile.header, count, lowerBound, upperBound }] : [];
+  }).sort((left, right) => right.count - left.count)[0];
+
+  if (outlier) {
+    insights.push({
+      title: 'Possible outliers',
+      field: outlier.header,
+      summary: `${outlier.count} of ${rows.length} values fall outside the 1.5x IQR range (${outlier.lowerBound} to ${outlier.upperBound}).`,
+    });
+  }
+
+  return insights;
+}

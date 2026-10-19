@@ -25,6 +25,7 @@ InsightX is a browser based workspace for exploring and cleaning CSV, JSON, and 
 - Switch between category comparisons and chronological trend lines, grouping ISO dates by day, month, or year.
 - Export the current chart as CSV data or a PNG image.
 - Inspect frequent repeated values in column profiles, and download a report with types, completeness, distinct counts, numeric ranges, averages, and medians.
+- Scan the current filtered rows for the most incomplete field, the most common category, and potential numeric outliers, with the values and counts shown.
 
 ## Project structure
 

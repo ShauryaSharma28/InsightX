@@ -4,6 +4,7 @@ import {
   countDuplicateRows,
   aggregateDateRows,
   filterRows,
+  getAutomaticInsights,
   getColumnProfiles,
   getImportErrorMessage,
   normalizeRows,
@@ -129,4 +130,21 @@ test('aggregateDateRows groups filtered numeric values by date interval in chron
     { label: '2024-01-23', value: 30 },
     { label: '2024-02-08', value: 20 },
   ]);
+});
+
+test('getAutomaticInsights explains missingness, frequent categories, and numeric outliers from the current rows', () => {
+  const insights = getAutomaticInsights(
+    ['Status', 'Score', 'Notes'],
+    [['active', '1', 'ok'], ['active', '2', ''], ['closed', '3', 'ok'], ['active', '4', ''], ['open', '50', 'ok']],
+  );
+
+  assert.deepEqual(insights, [
+    { title: 'Most incomplete column', field: 'Notes', summary: '2 of 5 matching rows have empty cells (40.0%).' },
+    { title: 'Most common category', field: 'Status', summary: 'active appears in 3 of 5 matching rows (60.0%).' },
+    { title: 'Possible outliers', field: 'Score', summary: '1 of 5 values fall outside the 1.5x IQR range (-1 to 7).' },
+  ]);
+});
+
+test('getAutomaticInsights returns no findings when there are no matching rows', () => {
+  assert.deepEqual(getAutomaticInsights(['Value'], []), []);
 });
