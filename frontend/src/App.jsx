@@ -5,7 +5,11 @@ import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessag
 import './App.css';
 
 function csvCell(value) {
-  const text = value ?? '';
+  const original = String(value ?? '');
+  // Spreadsheet apps may evaluate cells that begin with formula characters.
+  // Keep ordinary signed numbers numeric while marking other such values as text.
+  const formulaLike = /^[\t\r\n ]*[=+\-@]/.test(original);
+  const text = formulaLike && !Number.isFinite(Number(original)) ? `'${original}` : original;
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
