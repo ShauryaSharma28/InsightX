@@ -445,7 +445,24 @@ function App() {
     const clipboardText = rows.map((row) => row.map(cellText).join('\t')).join('\n');
 
     try {
-      await navigator.clipboard.writeText(clipboardText);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(clipboardText);
+      } else {
+        const temporaryInput = document.createElement('textarea');
+        temporaryInput.value = clipboardText;
+        temporaryInput.setAttribute('readonly', '');
+        temporaryInput.style.position = 'fixed';
+        temporaryInput.style.opacity = '0';
+        document.body.append(temporaryInput);
+        temporaryInput.select();
+        let copied = false;
+        try {
+          copied = document.execCommand('copy');
+        } finally {
+          temporaryInput.remove();
+        }
+        if (!copied) throw new Error('Clipboard copy is unavailable');
+      }
       setCopyStatus(`Copied ${sortedData.length.toLocaleString()} rows`);
     } catch {
       setCopyStatus('Clipboard access is unavailable in this browser');
