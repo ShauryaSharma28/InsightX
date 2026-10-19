@@ -1,6 +1,6 @@
+import csv
 from collections import Counter
 from datetime import date, datetime, time, timezone
-import csv
 from io import StringIO
 import json
 import math
@@ -171,6 +171,8 @@ def _unique_headers(values, width):
 
 
 def _parse_csv_bytes(payload):
+    if b'\x00' in payload:
+        raise ValueError('The uploaded CSV is not valid UTF-8 text.')
     text = payload.decode('utf-8-sig')
     sample = text[:8192]
     try:
@@ -212,10 +214,6 @@ def validate_dataset_upload(uploaded_file, full_validation=True):
     if extension == '.csv':
         if b'\x00' in sample:
             raise ValueError('The uploaded CSV is not valid UTF-8 text.')
-        try:
-            sample.decode('utf-8-sig', errors='ignore')
-        except UnicodeDecodeError as error:
-            raise ValueError('The uploaded CSV must use UTF-8 encoding.') from error
         if full_validation:
             try:
                 rows = _parse_csv_bytes(uploaded_file.read())

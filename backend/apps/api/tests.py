@@ -61,6 +61,8 @@ class AuthenticationAndDatasetTests(TestCase):
         }, format='json')
         self.assertEqual(registered.status_code, 201)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {registered.data['access']}")
+        malformed = self.client.post('/api/v1/auth/logout/', {'refresh': []}, format='json')
+        self.assertEqual(malformed.status_code, 400)
         logout = self.client.post('/api/v1/auth/logout/', {'refresh': registered.data['refresh']}, format='json')
         self.assertEqual(logout.status_code, 205)
         replay = self.client.post('/api/v1/auth/token/refresh/', {'refresh': registered.data['refresh']}, format='json')

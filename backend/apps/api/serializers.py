@@ -110,7 +110,6 @@ class DatasetSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'original_filename', 'file_size', 'profile_status', 'created_at', 'download_url']
 
     def validate_file(self, uploaded_file):
-        filename = Path(uploaded_file.name.replace('\\', '/')).name
         if uploaded_file.size == 0:
             raise serializers.ValidationError('The uploaded file is empty.')
         if uploaded_file.size > settings.MAX_DATASET_UPLOAD_SIZE:

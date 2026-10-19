@@ -84,7 +84,7 @@ class LogoutView(APIView):
 
     def post(self, request):
         refresh_token = request.data.get('refresh')
-        if not refresh_token:
+        if not isinstance(refresh_token, str) or not refresh_token:
             return Response({'refresh': 'This field is required.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             token = RefreshToken(refresh_token)
