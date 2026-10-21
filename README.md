@@ -22,6 +22,13 @@ InsightX is a browser based workspace for exploring and cleaning CSV and JSON da
 - Compare numeric measures across the matching rows and categories using totals or averages.
 - Export the current chart as CSV data or a PNG image.
 - Inspect frequent repeated values in column profiles, and download a report with types, completeness, distinct counts, numeric ranges, averages, and medians.
+- Create an account or sign in with the Django API; successful authentication returns JWT access and refresh tokens.
+
+## Accounts
+
+Start the backend before using the account forms. The API provides `POST /api/auth/register/` and `POST /api/auth/login/`; both accept an email and password. Registration uses Django's configured password validators. The frontend stores the returned tokens in browser storage for the current site.
+
+For a frontend pointed at a deployed backend, set `VITE_API_URL` to the API base URL (for example, `https://api.example.com/api`) in the frontend build environment. The local default in `frontend/.env.example` targets `http://127.0.0.1:8000/api`.
 
 ## Project structure
 
