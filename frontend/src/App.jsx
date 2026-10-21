@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
 import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJson, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
 import './App.css';
+import AuthPage from './AuthPage.jsx';
 
 function csvCell(value) {
   const text = value ?? '';
@@ -40,7 +41,7 @@ function downloadJsonFile(fileName, records) {
   URL.revokeObjectURL(url);
 }
 
-function App() {
+function Workspace() {
   const chartRef = useRef(null);
   const importRequest = useRef(0);
   const [preview, setPreview] = useState(null);
@@ -375,6 +376,7 @@ function App() {
           <a href="#workspace">Workspace</a>
           <a href="#insights">Insights</a>
           <a href="#rows">Rows</a>
+          {localStorage.getItem('insightx.access') ? <button className="account-link" type="button" onClick={() => { localStorage.removeItem('insightx.access'); localStorage.removeItem('insightx.refresh'); localStorage.removeItem('insightx.user'); window.location.reload(); }}>Sign out</button> : <><a href="?auth=login">Sign in</a><a className="auth-link" href="?auth=register">Create account</a></>}
         </nav>
         <div className="local-status"><span /> PRIVATE WORKSPACE</div>
       </header>
@@ -517,6 +519,16 @@ function App() {
       <footer><span>© INSIGHTX</span><span>MADE FOR CLEARER THINKING <i>✳</i></span></footer>
     </main>
   );
+}
+
+function App() {
+  const [authMode, setAuthMode] = useState(() => new URLSearchParams(window.location.search).get('auth'));
+  useEffect(() => {
+    const syncAuthMode = () => setAuthMode(new URLSearchParams(window.location.search).get('auth'));
+    window.addEventListener('popstate', syncAuthMode);
+    return () => window.removeEventListener('popstate', syncAuthMode);
+  }, []);
+  return authMode === 'login' || authMode === 'register' ? <AuthPage mode={authMode} /> : <Workspace />;
 }
 
 export default App;

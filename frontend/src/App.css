@@ -252,6 +252,8 @@ footer { color: #859388; }
   transition: color .18s, background .18s, border-color .18s;
 }
 .top-nav a:hover { border-color: #29392d; background: #141d17; color: #e4eadf; }
+.top-nav .account-link { padding: 8px 12px; border: 1px solid #40563d; border-radius: 8px; background: #18221c; color: #c5d1c1; font-size: 11px; cursor: pointer; }
+.top-nav .account-link:hover { border-color: #718d56; background: #202c22; color: #f0f4eb; }
 .top-nav a.auth-link { border-color: #40563d; background: #b4d27c; color: #152116; font-weight: 700; }
 .top-nav a.auth-link:hover { border-color: #c8e694; background: #c0df86; color: #152116; }
 .local-status {
