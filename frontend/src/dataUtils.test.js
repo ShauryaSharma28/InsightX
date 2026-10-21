@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   countDuplicateRows,
+  aggregateDateRows,
   filterRows,
+  getAutomaticInsights,
   getColumnProfiles,
   getImportErrorMessage,
   normalizeRows,
@@ -45,6 +47,8 @@ test('parseJson rejects empty arrays and non-object records', () => {
 test('getImportErrorMessage distinguishes malformed JSON and unsupported file content', () => {
   assert.match(getImportErrorMessage(new SyntaxError('Unexpected token'), 'json'), /JSON file is malformed/);
   assert.equal(getImportErrorMessage(new Error('JSON must contain a non-empty array of objects'), 'json'), 'JSON must contain a non-empty array of objects');
+  assert.match(getImportErrorMessage(new Error('corrupt archive'), 'xlsx'), /valid \.xlsx file/);
+  assert.equal(getImportErrorMessage(new Error('Excel workbook does not contain any worksheet data.'), 'xlsx'), 'Excel workbook does not contain any worksheet data.');
   assert.match(getImportErrorMessage(new Error('permission denied'), 'csv'), /file could not be read/);
 });
 
@@ -87,7 +91,7 @@ test('getColumnProfiles reports completeness and numeric summary statistics', ()
 
   assert.deepEqual(profiles[0], {
     header: 'Score', filled: 3, missing: 1, completeness: 75, distinct: 3,
-    type: 'Number', min: 1, max: 5, average: 3, median: 3,
+    commonValues: [], type: 'Number', min: 1, max: 5, average: 3, median: 3,
   });
   assert.equal(profiles[1].missing, 1);
   assert.equal(profiles[1].distinct, 2);
@@ -103,4 +107,44 @@ test('getColumnProfiles identifies ISO dates and reports their range', () => {
   assert.equal(profile.min, '2024-01-15');
   assert.equal(profile.max, '2024-02-29');
   assert.equal(profile.average, null);
+});
+
+test('aggregateDateRows groups filtered numeric values by date interval in chronological order', () => {
+  const rows = [
+    ['2024-02-08', '20'],
+    ['2024-01-02', '10'],
+    ['2024-01-23', '30'],
+    ['not a date', '400'],
+    ['2024-02-10', ''],
+  ];
+
+  assert.deepEqual(aggregateDateRows(rows, 0, 1, 'sum', 'month'), [
+    { label: '2024-01', value: 40 },
+    { label: '2024-02', value: 20 },
+  ]);
+  assert.deepEqual(aggregateDateRows(rows, 0, 1, 'average', 'year'), [
+    { label: '2024', value: 20 },
+  ]);
+  assert.deepEqual(aggregateDateRows(rows, 0, 1, 'sum', 'day'), [
+    { label: '2024-01-02', value: 10 },
+    { label: '2024-01-23', value: 30 },
+    { label: '2024-02-08', value: 20 },
+  ]);
+});
+
+test('getAutomaticInsights explains missingness, frequent categories, and numeric outliers from the current rows', () => {
+  const insights = getAutomaticInsights(
+    ['Status', 'Score', 'Notes'],
+    [['active', '1', 'ok'], ['active', '2', ''], ['closed', '3', 'ok'], ['active', '4', ''], ['open', '50', 'ok']],
+  );
+
+  assert.deepEqual(insights, [
+    { title: 'Most incomplete column', field: 'Notes', summary: '2 of 5 matching rows have empty cells (40.0%).' },
+    { title: 'Most common category', field: 'Status', summary: 'active appears in 3 of 5 matching rows (60.0%).' },
+    { title: 'Possible outliers', field: 'Score', summary: '1 of 5 values fall outside the 1.5x IQR range (-1 to 7).' },
+  ]);
+});
+
+test('getAutomaticInsights returns no findings when there are no matching rows', () => {
+  assert.deepEqual(getAutomaticInsights(['Value'], []), []);
 });

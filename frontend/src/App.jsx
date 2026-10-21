@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import sampleCsv from '../../sample-sales.csv?raw';
-import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJson, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
+import { aggregateDateRows, countDuplicateRows, filterRows, getAutomaticInsights, getColumnProfiles, getImportErrorMessage, normalizeRows, parseCsv, parseJsonDataset, previewValueReplacement, uniqueHeaders } from './dataUtils.js';
+import { parseExcelWorkbook } from './excelUtils.js';
+import { deleteWorkspace, getDatasetSignature, listWorkspaces, saveWorkspace } from './localWorkspaces.js';
+import AccountPanel from './AccountPanel.jsx';
+import { AccountProvider, useAccount } from './AccountContext.jsx';
+import { downloadSavedDataset } from './accountApi.js';
 import './App.css';
-import AuthPage from './AuthPage.jsx';
-
-const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
 
 function csvCell(value) {
-  const text = value ?? '';
+  const original = String(value ?? '');
+  // Spreadsheet apps may evaluate cells that begin with formula characters.
+  // Keep ordinary signed numbers numeric while marking other such values as text.
+  const formulaLike = /^[\t\r\n ]*[=+\-@]/.test(original);
+  const text = formulaLike && !Number.isFinite(Number(original)) ? `'${original}` : original;
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
@@ -43,9 +49,17 @@ function downloadJsonFile(fileName, records) {
   URL.revokeObjectURL(url);
 }
 
-function Workspace() {
+function App() {
+  return <AccountProvider><WorkspaceApp /></AccountProvider>;
+}
+
+function WorkspaceApp() {
   const chartRef = useRef(null);
+  const searchInputRef = useRef(null);
   const importRequest = useRef(0);
+  const selectedFileRef = useRef(null);
+  const { user, saveDataset } = useAccount();
+  const nextFilterId = useRef(2);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -55,41 +69,69 @@ function Workspace() {
   const [isDragging, setIsDragging] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(12);
+  const [editingEnabled, setEditingEnabled] = useState(false);
+  const [editingCell, setEditingCell] = useState(null);
+  const [editHistory, setEditHistory] = useState([]);
   const [chartColumn, setChartColumn] = useState(null);
+  const [chartType, setChartType] = useState('bar');
   const [chartGroupColumn, setChartGroupColumn] = useState('');
+  const [chartDateColumn, setChartDateColumn] = useState('');
+  const [chartDateBucket, setChartDateBucket] = useState('month');
   const [chartAggregate, setChartAggregate] = useState('sum');
   const [hideEmpty, setHideEmpty] = useState(false);
   const [removeDuplicates, setRemoveDuplicates] = useState(false);
   const [trimWhitespace, setTrimWhitespace] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState([]);
-  const [filterColumn, setFilterColumn] = useState('');
-  const [filterOperator, setFilterOperator] = useState('contains');
-  const [filterValue, setFilterValue] = useState('');
+  const [filterRules, setFilterRules] = useState([{ id: 1, column: '', operator: 'contains', value: '' }]);
+  const [filterMode, setFilterMode] = useState('all');
   const [showIncompleteColumns, setShowIncompleteColumns] = useState(false);
   const [profileCurrentView, setProfileCurrentView] = useState(false);
   const [replacementColumn, setReplacementColumn] = useState('');
   const [replacementFind, setReplacementFind] = useState('');
   const [replacementValue, setReplacementValue] = useState('');
   const [replacementEnabled, setReplacementEnabled] = useState(false);
-  const [savedDatasets, setSavedDatasets] = useState([]);
-  const [saveStatus, setSaveStatus] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState('');
+  const [savedWorkspaces, setSavedWorkspaces] = useState([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState('');
+  const [workspaceMessage, setWorkspaceMessage] = useState('');
+  const [accountPanelOpen, setAccountPanelOpen] = useState(false);
+  const [savedDatasetId, setSavedDatasetId] = useState(null);
+  const [isSavingToAccount, setIsSavingToAccount] = useState(false);
 
-  function setDataset(fileName, rows, fileSize) {
+  function setDataset(fileName, rows, fileSize, jsonRecords = null, sourceFile = null, serverDatasetId = null) {
     const { headers, data } = normalizeRows(rows);
+    const jsonCellMetadata = jsonRecords ? new WeakMap(data.map((row, rowIndex) => [
+      row,
+      rows[0].map((header) => Object.hasOwn(jsonRecords[rowIndex], header)
+        ? { present: true, value: jsonRecords[rowIndex][header] }
+        : { present: false }),
+    ])) : null;
     setCopyStatus('');
+    selectedFileRef.current = sourceFile;
+    setSavedDatasetId(serverDatasetId);
+    setEditingEnabled(false);
+    setEditingCell(null);
+    setEditHistory([]);
     const firstCategory = headers.findIndex((_, index) => {
       const values = data.map((row) => (row[index] ?? '').trim()).filter(Boolean);
       return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 24;
     });
-    setPreview({ fileName, fileSize, headers, data, rowCount: data.length });
+    const firstDate = getColumnProfiles(headers, data).findIndex((column) => column.type === 'Date');
+    setPreview({ fileName, fileSize, headers, data, rowCount: data.length, jsonCellMetadata });
+    setSavedWorkspaces(listWorkspaces(getDatasetSignature(fileName, headers, data.length)));
+    setActiveWorkspaceId('');
+    setWorkspaceMessage('');
     setVisibleColumns(headers.map((_, index) => index));
     setChartColumn(null);
+    setChartType('bar');
     setChartGroupColumn(firstCategory < 0 ? '' : String(firstCategory));
+    setChartDateColumn(firstDate < 0 ? '' : String(firstDate));
+    setChartDateBucket('month');
     setChartAggregate('sum');
     setPage(0);
-    setFilterColumn('');
-    setFilterValue('');
+    setFilterRules([{ id: 1, column: '', operator: 'contains', value: '' }]);
+    setFilterMode('all');
+    nextFilterId.current = 2;
     setReplacementColumn('');
     setReplacementFind('');
     setReplacementValue('');
@@ -99,90 +141,6 @@ function Workspace() {
     setTrimWhitespace(false);
     setShowIncompleteColumns(false);
     setProfileCurrentView(false);
-    setSaveStatus('');
-  }
-
-  useEffect(() => {
-    const draft = sessionStorage.getItem('insightx.pending-dataset');
-    if (draft) {
-      try {
-        const pending = JSON.parse(draft);
-        setDataset(pending.fileName, [pending.headers, ...pending.data], pending.fileSize);
-      } catch {
-        // Ignore an invalid temporary draft and keep the workspace local and usable.
-      }
-      sessionStorage.removeItem('insightx.pending-dataset');
-    }
-
-    const access = localStorage.getItem('insightx.access');
-    if (!access) return;
-    fetch(`${apiUrl}/saved-datasets/`, { headers: { Authorization: `Bearer ${access}` } })
-      .then((response) => response.ok ? response.json() : [])
-      .then((items) => setSavedDatasets(items))
-      .catch(() => setSavedDatasets([]));
-  }, []);
-
-  function openAuthToSave() {
-    if (preview) sessionStorage.setItem('insightx.pending-dataset', JSON.stringify({
-      fileName: preview.fileName,
-      fileSize: preview.fileSize,
-      headers: preview.headers,
-      data: downloadableRows,
-    }));
-    window.location.assign('?auth=login');
-  }
-
-  async function saveDataset() {
-    const access = localStorage.getItem('insightx.access');
-    if (!access || !preview) return;
-    setIsSaving(true);
-    setSaveStatus('');
-    try {
-      const response = await fetch(`${apiUrl}/saved-datasets/`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_name: preview.fileName, file_size: preview.fileSize, headers: preview.headers, data: downloadableRows }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || 'Could not save this dataset.');
-      setSavedDatasets((current) => [result, ...current]);
-      setSaveStatus('Saved to your account.');
-    } catch (cause) {
-      setSaveStatus(cause.message || 'Could not save this dataset.');
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function loadSavedDataset(datasetId) {
-    const access = localStorage.getItem('insightx.access');
-    if (!access) return;
-    setSaveStatus('Loading saved dataset…');
-    try {
-      const response = await fetch(`${apiUrl}/saved-datasets/${datasetId}/`, { headers: { Authorization: `Bearer ${access}` } });
-      if (!response.ok) throw new Error('Could not load this saved dataset.');
-      const item = await response.json();
-      setDataset(item.file_name, [item.headers, ...item.data], item.file_size);
-      setSaveStatus('Loaded from your account.');
-    } catch (cause) {
-      setSaveStatus(cause.message || 'Could not load this saved dataset.');
-    }
-  }
-
-  async function deleteSavedDataset(datasetId) {
-    const access = localStorage.getItem('insightx.access');
-    if (!access) return;
-    try {
-      const response = await fetch(`${apiUrl}/saved-datasets/${datasetId}/`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${access}` },
-      });
-      if (!response.ok) throw new Error('Could not delete this saved dataset.');
-      setSavedDatasets((current) => current.filter((item) => item.id !== datasetId));
-      setSaveStatus('Saved dataset deleted from your account.');
-    } catch (cause) {
-      setSaveStatus(cause.message || 'Could not delete this saved dataset.');
-    }
   }
 
   function loadSampleDataset() {
@@ -200,7 +158,7 @@ function Workspace() {
     }
   }
 
-  async function loadFile(file) {
+  async function loadFile(file, serverDatasetId = null) {
     const requestId = importRequest.current + 1;
     importRequest.current = requestId;
     setError('');
@@ -210,17 +168,24 @@ function Workspace() {
     }
 
     const extension = file.name.split('.').pop()?.toLowerCase();
-    if (extension !== 'csv' && extension !== 'json') {
+    if (!['csv', 'json', 'xlsx'].includes(extension)) {
       setIsLoading(false);
-      setError('That file type is not supported. Choose a CSV or JSON file.');
+      setError('That file type is not supported. Choose a CSV, JSON, or Excel (.xlsx) file.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const fileText = await file.text();
+      let jsonDataset = null;
+      let rows;
+      if (extension === 'xlsx') {
+        rows = await parseExcelWorkbook(await file.arrayBuffer());
+      } else {
+        const fileText = await file.text();
+        jsonDataset = extension === 'json' ? parseJsonDataset(fileText) : null;
+        rows = jsonDataset?.rows ?? parseCsv(fileText);
+      }
       if (requestId !== importRequest.current) return;
-      const rows = extension === 'json' ? parseJson(fileText) : parseCsv(fileText);
       if (rows.length < 2) {
         setError('This file needs field names and at least one data row.');
         return;
@@ -228,11 +193,146 @@ function Workspace() {
 
       setSearch('');
       setSort({ column: null, direction: 'asc' });
-      setDataset(file.name, rows, file.size);
+      setDataset(file.name, rows, file.size, jsonDataset?.records ?? null, file, serverDatasetId);
     } catch (cause) {
       if (requestId === importRequest.current) setError(getImportErrorMessage(cause, extension));
     } finally {
       if (requestId === importRequest.current) setIsLoading(false);
+    }
+  }
+
+  async function saveDatasetToAccount() {
+    const sourceFile = selectedFileRef.current;
+    if (!sourceFile || !preview || !user || savedDatasetId) return;
+    setIsSavingToAccount(true);
+    setWorkspaceMessage('');
+    try {
+      const saved = await saveDataset(sourceFile, workspaceName || preview.fileName.replace(/\.(csv|json|xlsx)$/i, ''));
+      setSavedDatasetId(saved.id);
+      setWorkspaceMessage(`Saved “${saved.name}” to your account.`);
+    } catch (cause) {
+      setWorkspaceMessage(cause instanceof Error ? cause.message : 'The dataset could not be saved to your account.');
+    } finally {
+      setIsSavingToAccount(false);
+    }
+  }
+
+  async function openSavedDataset(dataset) {
+    setError('');
+    try {
+      const blob = await downloadSavedDataset(dataset.id);
+      const file = new File([blob], dataset.original_filename);
+      await loadFile(file, dataset.id);
+      setAccountPanelOpen(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The saved dataset could not be opened.');
+    }
+  }
+
+  function saveCurrentWorkspace() {
+    if (!preview) return;
+    try {
+      const signature = getDatasetSignature(preview.fileName, preview.headers, preview.rowCount);
+      const saved = saveWorkspace({
+        name: workspaceName,
+        fileName: preview.fileName,
+        signature,
+        settings: {
+          search,
+          sort,
+          pageSize,
+          visibleColumns,
+          filterRules,
+          filterMode,
+          hideEmpty,
+          removeDuplicates,
+          trimWhitespace,
+          chartColumn,
+          chartType,
+          chartGroupColumn,
+          chartDateColumn,
+          chartDateBucket,
+          chartAggregate,
+          showIncompleteColumns,
+          profileCurrentView,
+          replacementColumn,
+          replacementFind,
+          replacementValue,
+          replacementEnabled,
+        },
+      });
+      setSavedWorkspaces(listWorkspaces(signature));
+      setActiveWorkspaceId(saved.id);
+      setWorkspaceName(saved.name);
+      setWorkspaceMessage(`Saved “${saved.name}” on this device.`);
+    } catch (cause) {
+      setWorkspaceMessage(cause instanceof Error ? cause.message : 'The workspace could not be saved.');
+    }
+  }
+
+  function restoreSavedWorkspace() {
+    const saved = savedWorkspaces.find((workspace) => workspace.id === activeWorkspaceId);
+    if (!preview || !saved) return;
+    const settings = saved.settings;
+    const allowedOperators = new Set([
+      'contains', 'startsWith', 'endsWith', 'equals', 'notEquals', 'greater', 'less',
+      'dateAfter', 'dateBefore', 'dateOnOrAfter', 'dateOnOrBefore', 'empty', 'notEmpty',
+    ]);
+    const restoredRules = Array.isArray(settings.filterRules) ? settings.filterRules.filter((rule) => rule && typeof rule === 'object').slice(0, 5).map((rule, index) => ({
+      id: index + 1,
+      column: rule.column !== '' && Number.isInteger(Number(rule.column)) && Number(rule.column) >= 0 && Number(rule.column) < preview.headers.length ? String(rule.column) : '',
+      operator: allowedOperators.has(rule.operator) ? rule.operator : 'contains',
+      value: String(rule.value ?? ''),
+    })) : [];
+    const visible = Array.isArray(settings.visibleColumns)
+      ? [...new Set(settings.visibleColumns.filter((index) => Number.isInteger(index) && index >= 0 && index < preview.headers.length))]
+      : [];
+    const dateProfileIndexes = new Set(getColumnProfiles(preview.headers, preview.data)
+      .flatMap((column, index) => column.type === 'Date' ? [index] : []));
+    const allowedPageSizes = new Set([12, 24, 50, 100, 250]);
+
+    setSearch(typeof settings.search === 'string' ? settings.search : '');
+    setSort({
+      column: Number.isInteger(settings.sort?.column) && settings.sort.column >= 0 && settings.sort.column < preview.headers.length ? settings.sort.column : null,
+      direction: settings.sort?.direction === 'desc' ? 'desc' : 'asc',
+    });
+    setPageSize(allowedPageSizes.has(settings.pageSize) ? settings.pageSize : 12);
+    setVisibleColumns(visible.length > 0 ? visible : preview.headers.map((_, index) => index));
+    setFilterRules(restoredRules.length > 0 ? restoredRules : [{ id: 1, column: '', operator: 'contains', value: '' }]);
+    nextFilterId.current = Math.max(2, restoredRules.length + 1);
+    setFilterMode(settings.filterMode === 'any' ? 'any' : 'all');
+    setHideEmpty(Boolean(settings.hideEmpty));
+    setRemoveDuplicates(Boolean(settings.removeDuplicates));
+    setTrimWhitespace(Boolean(settings.trimWhitespace));
+    setChartColumn(Number.isInteger(settings.chartColumn) && settings.chartColumn >= 0 && settings.chartColumn < preview.headers.length ? settings.chartColumn : null);
+    setChartType(settings.chartType === 'line' ? 'line' : 'bar');
+    setChartGroupColumn(typeof settings.chartGroupColumn === 'string' ? settings.chartGroupColumn : '');
+    setChartDateColumn(settings.chartDateColumn !== '' && dateProfileIndexes.has(Number(settings.chartDateColumn)) ? String(settings.chartDateColumn) : '');
+    setChartDateBucket(['day', 'month', 'year'].includes(settings.chartDateBucket) ? settings.chartDateBucket : 'month');
+    setChartAggregate(settings.chartAggregate === 'average' ? 'average' : 'sum');
+    setShowIncompleteColumns(Boolean(settings.showIncompleteColumns));
+    setProfileCurrentView(Boolean(settings.profileCurrentView));
+    setReplacementColumn(typeof settings.replacementColumn === 'string' ? settings.replacementColumn : '');
+    setReplacementFind(typeof settings.replacementFind === 'string' ? settings.replacementFind : '');
+    setReplacementValue(typeof settings.replacementValue === 'string' ? settings.replacementValue : '');
+    setReplacementEnabled(Boolean(settings.replacementEnabled));
+    setEditingEnabled(false);
+    setEditingCell(null);
+    setPage(0);
+    setWorkspaceName(saved.name);
+    setWorkspaceMessage(`Restored “${saved.name}”.`);
+  }
+
+  function removeSavedWorkspace() {
+    if (!activeWorkspaceId) return;
+    try {
+      const signature = getDatasetSignature(preview.fileName, preview.headers, preview.rowCount);
+      deleteWorkspace(activeWorkspaceId);
+      setSavedWorkspaces(listWorkspaces(signature));
+      setActiveWorkspaceId('');
+      setWorkspaceMessage('Saved workspace removed from this device.');
+    } catch {
+      setWorkspaceMessage('The saved workspace could not be removed.');
     }
   }
 
@@ -247,14 +347,33 @@ function Workspace() {
     loadFile(event.dataTransfer.files?.[0]);
   }
 
+  function updateFilterRule(id, key, value) {
+    setPage(0);
+    setFilterRules((current) => current.map((rule) => rule.id === id ? { ...rule, [key]: value } : rule));
+  }
+
+  function addFilterRule() {
+    if (filterRules.length >= 5) return;
+    setFilterRules((current) => [...current, {
+      id: nextFilterId.current++, column: '', operator: 'contains', value: '',
+    }]);
+    setPage(0);
+  }
+
+  function removeFilterRule(id) {
+    if (filterRules.length <= 1) return;
+    setFilterRules((current) => current.filter((rule) => rule.id !== id));
+    setPage(0);
+  }
+
   const searchTerm = search.trim().toLowerCase();
   const filteredData = useMemo(() => filterRows(preview?.data ?? [], {
     searchTerm,
     hideEmpty,
-    filterColumn,
-    filterOperator,
-    filterValue,
-  }), [filterColumn, filterOperator, filterValue, hideEmpty, preview, searchTerm]);
+    filterRules,
+    filterMode,
+  }), [filterMode, filterRules, hideEmpty, preview, searchTerm]);
+  const automaticInsights = useMemo(() => getAutomaticInsights(preview?.headers ?? [], filteredData), [filteredData, preview]);
   const sortedData = useMemo(() => sort.column === null ? filteredData : [...filteredData].sort((left, right) => {
     const leftValue = (left[sort.column] ?? '').trim();
     const rightValue = (right[sort.column] ?? '').trim();
@@ -301,9 +420,15 @@ function Workspace() {
     const distinct = new Set(values).size;
     return distinct > 1 && distinct < values.length && distinct <= 24;
   }) ?? [], [preview]);
+  const dateColumns = useMemo(() => getColumnProfiles(preview?.headers ?? [], preview?.data ?? [])
+    .flatMap((column, index) => column.type === 'Date' ? [{ header: column.header, index }] : []), [preview]);
   const activeChartColumn = chartColumn ?? numericColumns[0]?.index;
   const chartData = useMemo(() => {
     if (!preview || activeChartColumn === undefined) return [];
+    if (chartType === 'line') {
+      if (chartDateColumn === '') return [];
+      return aggregateDateRows(filteredData, Number(chartDateColumn), activeChartColumn, chartAggregate, chartDateBucket);
+    }
     if (chartGroupColumn === '') return filteredData.map((row, index) => ({ row, index }))
       .filter(({ row }) => {
         const value = (row[activeChartColumn] ?? '').trim();
@@ -328,7 +453,7 @@ function Workspace() {
       label: group.label,
       value: chartAggregate === 'average' ? group.value / group.count : group.value,
     })).sort((left, right) => right.value - left.value).slice(0, 12);
-  }, [activeChartColumn, chartAggregate, chartGroupColumn, filteredData, preview]);
+  }, [activeChartColumn, chartAggregate, chartDateBucket, chartDateColumn, chartGroupColumn, chartType, filteredData, preview]);
   const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
   const visibleData = sortedData.slice(page * pageSize, (page + 1) * pageSize);
   const columnProfiles = useMemo(() => getColumnProfiles(
@@ -346,30 +471,104 @@ function Workspace() {
     }));
   }
 
+  function commitCellEdit(rowIndex, columnIndex, value) {
+    const previousValue = preview?.data[rowIndex]?.[columnIndex];
+    if (previousValue !== undefined && previousValue !== value) {
+      setEditHistory((current) => [...current, { rowIndex, columnIndex, before: previousValue }].slice(-100));
+    }
+    setPreview((current) => {
+      if (!current || current.data[rowIndex]?.[columnIndex] === value) return current;
+      const previousRow = current.data[rowIndex];
+      if (!previousRow) return current;
+      const nextRow = [...previousRow];
+      nextRow[columnIndex] = value;
+      if (current.jsonCellMetadata) {
+        current.jsonCellMetadata.set(nextRow, current.jsonCellMetadata.get(previousRow));
+      }
+      const data = [...current.data];
+      data[rowIndex] = nextRow;
+      return { ...current, data };
+    });
+    setEditingCell(null);
+  }
+
+  function undoCellEdit() {
+    const previousEdit = editHistory.at(-1);
+    if (!previousEdit) return;
+    setPreview((current) => {
+      const previousRow = current?.data[previousEdit.rowIndex];
+      if (!previousRow) return current;
+      const nextRow = [...previousRow];
+      nextRow[previousEdit.columnIndex] = previousEdit.before;
+      if (current.jsonCellMetadata) {
+        current.jsonCellMetadata.set(nextRow, current.jsonCellMetadata.get(previousRow));
+      }
+      const data = [...current.data];
+      data[previousEdit.rowIndex] = nextRow;
+      return { ...current, data };
+    });
+    setEditHistory((current) => current.slice(0, -1));
+  }
+
+  useEffect(() => {
+    function handleUndoShortcut(event) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' || event.shiftKey) return;
+      if (editingCell !== null || event.target instanceof HTMLElement && event.target.matches('input, textarea, select, [contenteditable="true"]')) return;
+      if (editHistory.length === 0) return;
+      event.preventDefault();
+      undoCellEdit();
+    }
+    window.addEventListener('keydown', handleUndoShortcut);
+    return () => window.removeEventListener('keydown', handleUndoShortcut);
+  }, [editHistory, editingCell]);
+
+  useEffect(() => {
+    function handleSearchShortcut(event) {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.target instanceof HTMLElement && event.target.matches('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    }
+    window.addEventListener('keydown', handleSearchShortcut);
+    return () => window.removeEventListener('keydown', handleSearchShortcut);
+  }, []);
+
   function downloadCsv() {
     if (!preview) return;
     const content = [[...selectedColumns.map((index) => preview.headers[index])], ...downloadableRows.map((row) => selectedColumns.map((index) => row[index] ?? ''))].map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.csv`, content);
   }
 
   function downloadJson() {
     if (!preview) return;
     const headers = uniqueHeaders(selectedColumns.map((index) => preview.headers[index]));
-    const records = downloadableRows.map((row) => Object.fromEntries(
-      headers.map((header, index) => [header, row[selectedColumns[index]] ?? '']),
-    ));
-    downloadJsonFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.json`, records);
+    const records = downloadableRows.map((row, rowIndex) => {
+      const sourceValues = preview.jsonCellMetadata?.get(exportRows[rowIndex]);
+      return Object.fromEntries(headers.flatMap((header, index) => {
+        const sourceColumn = selectedColumns[index];
+        const value = row[sourceColumn] ?? '';
+        const original = sourceValues?.[sourceColumn];
+        if (original?.present && value === (exportRows[rowIndex][sourceColumn] ?? '')) {
+          return [[header, original.value]];
+        }
+        if (original && !original.present && value === '') return [];
+        return [[header, value]];
+      }));
+    });
+    downloadJsonFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}${removeDuplicates ? '-deduplicated' : ''}-cleaned.json`, records);
   }
 
   function downloadChartData() {
     if (!preview || activeChartColumn === undefined || chartData.length === 0) return;
-    const labelHeader = chartGroupColumn === '' ? 'Label' : preview.headers[Number(chartGroupColumn)];
+    const labelHeader = chartType === 'line'
+      ? `${preview.headers[Number(chartDateColumn)]} (${chartDateBucket})`
+      : chartGroupColumn === '' ? 'Label' : preview.headers[Number(chartGroupColumn)];
     const report = [
       [labelHeader, preview.headers[activeChartColumn]],
       ...chartData.map(({ label, value }) => [label, value]),
     ];
     const content = report.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-chart-data.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-chart-data.csv`, content);
   }
 
   function downloadChartPng() {
@@ -408,7 +607,7 @@ function Workspace() {
         const pngUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = pngUrl;
-        link.download = `${preview.fileName.replace(/\.(csv|json)$/i, '')}-chart.png`;
+        link.download = `${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-chart.png`;
         link.click();
         window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
       }, 'image/png');
@@ -426,7 +625,24 @@ function Workspace() {
     const clipboardText = rows.map((row) => row.map(cellText).join('\t')).join('\n');
 
     try {
-      await navigator.clipboard.writeText(clipboardText);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(clipboardText);
+      } else {
+        const temporaryInput = document.createElement('textarea');
+        temporaryInput.value = clipboardText;
+        temporaryInput.setAttribute('readonly', '');
+        temporaryInput.style.position = 'fixed';
+        temporaryInput.style.opacity = '0';
+        document.body.append(temporaryInput);
+        temporaryInput.select();
+        let copied = false;
+        try {
+          copied = document.execCommand('copy');
+        } finally {
+          temporaryInput.remove();
+        }
+        if (!copied) throw new Error('Clipboard copy is unavailable');
+      }
       setCopyStatus(`Copied ${sortedData.length.toLocaleString()} rows`);
     } catch {
       setCopyStatus('Clipboard access is unavailable in this browser');
@@ -440,14 +656,14 @@ function Workspace() {
       ...columnProfiles.map((column) => [column.header, column.type, column.filled, column.missing, column.completeness, column.distinct, column.min ?? '', column.max ?? '', column.average ?? '', column.median ?? '']),
     ];
     const content = report.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-column-report.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-column-report.csv`, content);
   }
 
   function downloadIncompleteRows() {
     if (!preview) return;
     if (incompleteRows.length === 0) return;
     const content = [preview.headers, ...incompleteRows].map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json)$/i, '')}-incomplete-rows.csv`, content);
+    downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-incomplete-rows.csv`, content);
   }
 
   function downloadSampleCsv() {
@@ -465,16 +681,22 @@ function Workspace() {
           <a href="#workspace">Workspace</a>
           <a href="#insights">Insights</a>
           <a href="#rows">Rows</a>
-          {localStorage.getItem('insightx.access') ? <button className="account-link" type="button" onClick={() => { localStorage.removeItem('insightx.access'); localStorage.removeItem('insightx.refresh'); localStorage.removeItem('insightx.user'); window.location.reload(); }}>Sign out</button> : <><a href="?auth=login">Sign in</a><a className="auth-link" href="?auth=register">Create account</a></>}
         </nav>
-        <div className="local-status"><span /> LOCAL BY DEFAULT</div>
+        <div className="topbar-actions">
+          <div className="local-status"><span /> LOCAL BY DEFAULT</div>
+          <button className="account-button" type="button" aria-expanded={accountPanelOpen} onClick={() => setAccountPanelOpen((open) => !open)}>
+            {user ? user.username : 'Account'}
+          </button>
+        </div>
       </header>
+
+      {accountPanelOpen && <AccountPanel onOpenDataset={openSavedDataset} />}
 
       <section className="intro" id="top">
         <div className="intro-copy">
           <span className="eyebrow">YOUR DATA, IN A NEW LIGHT</span>
           <h1>Make sense<br />of <em>every row.</em></h1>
-          <p>A calm, clear space to explore your data.<br className="desktop-break" /> Drop in a CSV or JSON file and see what’s inside.</p>
+          <p>A calm, clear space to explore your data.<br className="desktop-break" /> Drop in a CSV, JSON, or Excel file and see what’s inside.</p>
         </div>
         <div className="intro-art" aria-hidden="true">
           <div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" />
@@ -486,7 +708,7 @@ function Workspace() {
       <section className="workspace" id="workspace" aria-labelledby="upload-title">
         <div className="workspace-heading">
           <div><span className="section-kicker">01 <i /> START WITH A DATASET</span><h2 id="upload-title">Bring your data in</h2></div>
-          <div className="csv-pill"><span>↳</span> CSV / JSON</div>
+          <div className="csv-pill"><span>↳</span> CSV / JSON / XLSX</div>
         </div>
 
         <label
@@ -497,23 +719,24 @@ function Workspace() {
           onDrop={handleDrop}
         >
           <span className="upload-icon" aria-hidden="true"><span>↑</span></span>
-          <span className="upload-copy"><strong>Drop your CSV or JSON here</strong><small>or browse files from your device</small></span>
+          <span className="upload-copy"><strong>Drop a CSV, JSON, or Excel file here</strong><small>or browse files from your device</small></span>
           <span className="browse-button">Choose a file <span aria-hidden="true">↗</span></span>
-          <input id="dataset-file" type="file" accept=".csv,.json,text/csv,application/json" onChange={handleFileChange} />
+          <input id="dataset-file" type="file" accept=".csv,.json,.xlsx,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFileChange} />
         </label>
-        <div className="privacy-note"><span aria-hidden="true">◈</span> Your files stay on this device unless you choose to save a dataset to your account.</div>
+        <div className="privacy-note"><span aria-hidden="true">◈</span> Files stay on this device unless you choose “Save to account”. CSV, JSON, and XLSX files are supported.</div>
         <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 62-row sample <span>↗</span></button><button className="sample-download" type="button" onClick={downloadSampleCsv}>Download sample CSV ↓</button></div>
 
         {isLoading && <p className="import-status" role="status">Reading your file…</p>}
         {error && <p className="error-message" role="alert">{error}</p>}
-        {savedDatasets.length > 0 && <div className="saved-datasets"><strong>Your saved datasets</strong>{savedDatasets.map((item) => <div className="saved-dataset-actions" key={item.id}><button type="button" onClick={() => loadSavedDataset(item.id)}>{item.file_name}<span>Load</span></button><button type="button" className="saved-dataset-delete" onClick={() => deleteSavedDataset(item.id)} aria-label={`Delete ${item.file_name}`}>Delete</button></div>)}</div>}
 
         {preview && (
           <div className="dataset-area" id="insights" aria-live="polite">
             <div className="dataset-title-row">
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
               <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records <span>·</span> {formatFileSize(preview.fileSize)}</p></div>
-              {localStorage.getItem('insightx.access') ? <button className="report-button save-account-button" type="button" onClick={saveDataset} disabled={isSaving}>{isSaving ? 'Saving…' : 'Save to account'}</button> : <button className="report-button save-account-button" type="button" onClick={openAuthToSave}>Sign in to save</button>}
+              {selectedFileRef.current && <button className="download-button account-save-button" type="button" onClick={user ? saveDatasetToAccount : () => setAccountPanelOpen(true)} disabled={isSavingToAccount || Boolean(savedDatasetId)}>
+                {savedDatasetId ? 'Saved to account' : isSavingToAccount ? 'Saving…' : user ? 'Save to account' : 'Sign in to save'}
+              </button>}
               <button className="download-button export-json-button" type="button" onClick={downloadJson} disabled={downloadableRows.length === 0}>
                 Export {removeDuplicates || replacementEnabled ? 'cleaned JSON' : 'JSON'} ({downloadableRows.length.toLocaleString()})
               </button>
@@ -521,19 +744,41 @@ function Workspace() {
                 <span aria-hidden="true">↓</span> Export {removeDuplicates || replacementEnabled ? 'cleaned CSV' : 'CSV'} ({downloadableRows.length.toLocaleString()})
               </button>
             </div>
-            {saveStatus && <p className="save-status" role="status">{saveStatus}</p>}
+
+            <section className="workspace-saver" aria-label="Saved analysis workspaces">
+              <div className="workspace-saver-heading"><div><span className="section-kicker">PICK UP WHERE YOU LEFT OFF</span><h3>Saved workspaces</h3></div><span>Saved in this browser</span></div>
+              <div className="workspace-save-controls">
+                <label>Save current view as<input value={workspaceName} maxLength={80} onChange={(event) => setWorkspaceName(event.target.value)} placeholder="e.g. Monthly sales review" /></label>
+                <button className="report-button" type="button" onClick={saveCurrentWorkspace}>Save view</button>
+                <label>Saved views<select value={activeWorkspaceId} onChange={(event) => { setActiveWorkspaceId(event.target.value); const selected = savedWorkspaces.find((workspace) => workspace.id === event.target.value); if (selected) setWorkspaceName(selected.name); }}><option value="">Choose a saved view</option>{savedWorkspaces.map((workspace) => <option value={workspace.id} key={workspace.id}>{workspace.name}</option>)}</select></label>
+                <button className="report-button" type="button" onClick={restoreSavedWorkspace} disabled={!activeWorkspaceId}>Restore view</button>
+                <button className="report-button" type="button" onClick={removeSavedWorkspace} disabled={!activeWorkspaceId}>Delete view</button>
+              </div>
+              <p className="workspace-saver-note">Filters, columns, and chart settings are saved locally. Reopen the original file to restore its view; dataset rows are not saved here.</p>
+              {workspaceMessage && <p className="workspace-saver-message" role="status">{workspaceMessage}</p>}
+            </section>
 
             <div className="analysis-grid">
               <section className="analysis-card chart-card">
-                <div className="analysis-heading"><div><span className="section-kicker">03 <i /> QUICK VISUAL</span><h3>Compare values across groups</h3></div><span className="chart-badge">✳ LIVE SUMMARY</span></div>
+                <div className="analysis-heading"><div><span className="section-kicker">03 <i /> QUICK VISUAL</span><h3>Explore values across groups and dates</h3></div><span className="chart-badge">✳ LIVE SUMMARY</span></div>
                 <div className="chart-controls">
-                  {numericColumns.length > 0 && <label>MEASURE<select aria-label="Choose chart measure" value={activeChartColumn} onChange={(event) => setChartColumn(Number(event.target.value))}>{numericColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>}
-                  <label>GROUP BY<select aria-label="Group chart by" value={chartGroupColumn} onChange={(event) => setChartGroupColumn(event.target.value)}><option value="">Each row</option>{categoricalColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>
-                  {chartGroupColumn !== '' && <label>CALCULATION<select aria-label="Choose chart calculation" value={chartAggregate} onChange={(event) => setChartAggregate(event.target.value)}><option value="sum">Total</option><option value="average">Average</option></select></label>}
-                </div>
-                {chartData.length ? <div className="chart-wrap" ref={chartRef}><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#2b3930" /><XAxis dataKey="label" tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip cursor={{ fill: '#1d2a20' }} contentStyle={{ border: '1px solid #344335', borderRadius: 8, background: '#18221c', color: '#e4eadf', fontSize: 12 }} /><Bar dataKey="value" name={preview.headers[activeChartColumn]} fill="#b4d27c" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div> : <p className="no-chart">{numericColumns.length ? 'No matching rows with numeric values for these filters.' : 'No numeric column found. Add numeric values to create a chart.'}</p>}
-                <div className="chart-footer"><p className="chart-note">{chartGroupColumn === '' ? 'First 12 rows matching current filters' : `${chartAggregate === 'sum' ? 'Totals' : 'Averages'} across matching rows · highest values first`}</p>{chartData.length > 0 && <div className="chart-export-actions"><button className="report-button" type="button" onClick={downloadChartData}>Export chart CSV</button><button className="report-button" type="button" onClick={downloadChartPng}>Export chart PNG</button></div>}</div>
-              </section>
+  <label>VISUALIZATION<select aria-label="Choose visualization" value={chartType} onChange={(event) => setChartType(event.target.value)}><option value="bar">Bar comparison</option><option value="line">Date trend</option></select></label>
+  {numericColumns.length > 0 && <label>MEASURE<select aria-label="Choose chart measure" value={activeChartColumn} onChange={(event) => setChartColumn(Number(event.target.value))}>{numericColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>}
+  {chartType === 'line' ? <>
+    <label>DATE FIELD<select aria-label="Choose date field" value={chartDateColumn} onChange={(event) => setChartDateColumn(event.target.value)}><option value="">Choose a date field</option>{dateColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>
+    <label>TIME GRAIN<select aria-label="Choose time grain" value={chartDateBucket} onChange={(event) => setChartDateBucket(event.target.value)}><option value="day">Day</option><option value="month">Month</option><option value="year">Year</option></select></label>
+    <label>CALCULATION<select aria-label="Choose chart calculation" value={chartAggregate} onChange={(event) => setChartAggregate(event.target.value)}><option value="sum">Total</option><option value="average">Average</option></select></label>
+  </> : <>
+    <label>GROUP BY<select aria-label="Group chart by" value={chartGroupColumn} onChange={(event) => setChartGroupColumn(event.target.value)}><option value="">Each row</option>{categoricalColumns.map(({ header, index }) => <option key={index} value={index}>{header}</option>)}</select></label>
+    {chartGroupColumn !== '' && <label>CALCULATION<select aria-label="Choose chart calculation" value={chartAggregate} onChange={(event) => setChartAggregate(event.target.value)}><option value="sum">Total</option><option value="average">Average</option></select></label>}
+  </>}
+</div>
+{chartData.length ? <div className="chart-wrap" ref={chartRef}><ResponsiveContainer width="100%" height="100%">
+  {chartType === 'line'
+    ? <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#2b3930" /><XAxis dataKey="label" interval="preserveStartEnd" tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip contentStyle={{ border: '1px solid #344335', borderRadius: 8, background: '#18221c', color: '#e4eadf', fontSize: 12 }} /><Line type="monotone" dataKey="value" name={preview.headers[activeChartColumn]} stroke="#b4d27c" strokeWidth={2} dot={{ r: 2, fill: '#b4d27c' }} activeDot={{ r: 4 }} /></LineChart>
+    : <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><CartesianGrid vertical={false} stroke="#2b3930" /><XAxis dataKey="label" tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#a1ada2', fontSize: 10 }} axisLine={false} tickLine={false} width={42} /><Tooltip cursor={{ fill: '#1d2a20' }} contentStyle={{ border: '1px solid #344335', borderRadius: 8, background: '#18221c', color: '#e4eadf', fontSize: 12 }} /><Bar dataKey="value" name={preview.headers[activeChartColumn]} fill="#b4d27c" radius={[4, 4, 0, 0]} /></BarChart>}
+</ResponsiveContainer></div> : <p className="no-chart">{chartType === 'line' && dateColumns.length === 0 ? 'No ISO date column found. Use YYYY-MM-DD dates to create a trend chart.' : chartType === 'line' && chartDateColumn === '' ? 'Choose an ISO date column to create a trend chart.' : numericColumns.length ? 'No matching rows with numeric values for these filters.' : 'No numeric column found. Add numeric values to create a chart.'}</p>}
+<div className="chart-footer"><p className="chart-note">{chartType === 'line' ? (chartAggregate === 'sum' ? 'Totals' : 'Averages') + ' per ' + chartDateBucket + ' using ' + (preview.headers[Number(chartDateColumn)] ?? 'date field') : chartGroupColumn === '' ? 'First 12 rows matching current filters' : (chartAggregate === 'sum' ? 'Totals' : 'Averages') + ' across matching rows · highest values first'}</p>{chartData.length > 0 && <div className="chart-export-actions"><button className="report-button" type="button" onClick={downloadChartData}>Export chart CSV</button><button className="report-button" type="button" onClick={downloadChartPng}>Export chart PNG</button></div>}</div></section>
               <section className="analysis-card quality-card"><div className="analysis-heading"><div><span className="section-kicker">DATA HYGIENE</span><h3>Clean up your export</h3></div></div>
                 <label className="toggle-row"><span><strong>Hide incomplete rows</strong><small>Exclude rows with empty cells from the table</small></span><input type="checkbox" checked={hideEmpty} onChange={(event) => { setHideEmpty(event.target.checked); setPage(0); }} /></label>
                 <label className="toggle-row"><span><strong>Trim whitespace on export</strong><small>Remove leading and trailing spaces from exported cells</small></span><input type="checkbox" checked={trimWhitespace} onChange={(event) => setTrimWhitespace(event.target.checked)} /></label>
@@ -574,22 +819,38 @@ function Workspace() {
               <article className="insight-card"><span className="insight-label">DUPLICATE ROWS</span><strong>{duplicateRows.toLocaleString()}</strong><span className="insight-caption">{duplicateRows === 0 ? 'no repeats found' : 'repeated records'}</span><span className="insight-icon green">⧉</span></article>
             </div>
 
+            <section className="automatic-insights" aria-labelledby="automatic-insights-title">
+              <div className="automatic-insights-heading"><div><span className="section-kicker">PATTERN SCAN</span><h3 id="automatic-insights-title">Signals in this view</h3></div><p>{filteredData.length.toLocaleString()} matching rows analysed</p></div>
+              {automaticInsights.length > 0
+                ? <div className="automatic-insight-grid">{automaticInsights.map((insight) => <article className="automatic-insight-card" key={`${insight.title}-${insight.field}`}><span>{insight.title}</span><strong>{insight.field}</strong><p>{insight.summary}</p></article>)}</div>
+                : <p className="automatic-insights-empty">No strong patterns found in this view. Try widening the filters or loading more rows.</p>}
+            </section>
+
             <div className="table-heading" id="rows">
               <div><span className="section-kicker">02 <i /> EXPLORE YOUR DATA</span><h3>Rows &amp; columns</h3></div>
               <div className="search-control">
                 <span aria-hidden="true">⌕</span>
-                <input type="search" value={search} onKeyDown={(event) => { if (event.key === 'Escape') { setSearch(''); setPage(0); } }} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder="Search this dataset" aria-label="Search all columns" />
+                <input ref={searchInputRef} type="search" value={search} onKeyDown={(event) => { if (event.key === 'Escape') { setSearch(''); setPage(0); } }} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder="Search this dataset" aria-label="Search all columns (press / to focus)" />
                 {search && <span className="result-count">{filteredData.length} found</span>}
                 {search && <button className="clear-search" type="button" onClick={() => { setSearch(''); setPage(0); }} aria-label="Clear search">×</button>}
               </div>
             </div>
             <div className="filter-toolbar">
-              <label>Filter column<select value={filterColumn} onChange={(event) => { setFilterColumn(event.target.value); setPage(0); }}><option value="">All columns</option>{preview.headers.map((header, index) => <option value={index} key={index}>{header}</option>)}</select></label>
-              <label>Condition<select value={filterOperator} onChange={(event) => { setFilterOperator(event.target.value); setPage(0); }}><option value="contains">contains</option><option value="startsWith">starts with</option><option value="endsWith">ends with</option><option value="equals">equals</option><option value="notEquals">does not equal</option><option value="greater">greater than</option><option value="less">less than</option><option value="empty">is empty</option><option value="notEmpty">is not empty</option></select></label>
-              <label className="filter-value">Value<input value={filterValue} disabled={filterOperator === 'empty' || filterOperator === 'notEmpty'} onChange={(event) => { setFilterValue(event.target.value); setPage(0); }} placeholder={filterOperator === 'empty' || filterOperator === 'notEmpty' ? 'Not needed' : 'Type a value'} /></label>
+              <div className="filter-rule-list" aria-label="Filter conditions">
+                {filterRules.map((rule, index) => <div className="filter-rule" role="group" aria-label={`Filter condition ${index + 1}`} key={rule.id}>
+                  {index > 0 && <span className="filter-rule-join" aria-label={filterMode === 'all' ? 'and' : 'or'}>{filterMode === 'all' ? 'AND' : 'OR'}</span>}
+                  <label>Filter column<select value={rule.column} onChange={(event) => updateFilterRule(rule.id, 'column', event.target.value)}><option value="">All columns</option>{preview.headers.map((header, columnIndex) => <option value={columnIndex} key={columnIndex}>{header}</option>)}</select></label>
+                  <label>Condition<select value={rule.operator} onChange={(event) => updateFilterRule(rule.id, 'operator', event.target.value)}><option value="contains">contains</option><option value="startsWith">starts with</option><option value="endsWith">ends with</option><option value="equals">equals</option><option value="notEquals">does not equal</option><option value="greater">greater than</option><option value="less">less than</option><option value="dateAfter">date is after</option><option value="dateBefore">date is before</option><option value="dateOnOrAfter">date is on or after</option><option value="dateOnOrBefore">date is on or before</option><option value="empty">is empty</option><option value="notEmpty">is not empty</option></select></label>
+                  <label className="filter-value">Value<input type={rule.operator.startsWith('date') ? 'date' : 'text'} value={rule.value} disabled={rule.operator === 'empty' || rule.operator === 'notEmpty'} onChange={(event) => updateFilterRule(rule.id, 'value', event.target.value)} placeholder={rule.operator === 'empty' || rule.operator === 'notEmpty' ? 'Not needed' : rule.operator.startsWith('date') ? undefined : 'Type a value'} /></label>
+                  <button className="remove-filter-button" type="button" onClick={() => removeFilterRule(rule.id)} disabled={filterRules.length === 1} aria-label={`Remove filter condition ${index + 1}`}>Remove</button>
+                </div>)}
+              </div>
+              <button className="add-filter-button" type="button" onClick={addFilterRule} disabled={filterRules.length >= 5}>+ Add condition</button>
+              <label className="filter-mode">Match<select value={filterMode} onChange={(event) => { setFilterMode(event.target.value); setPage(0); }}><option value="all">All conditions</option><option value="any">Any condition</option></select></label>
               <details className="column-picker"><summary>Columns ({selectedColumns.length}/{preview.headers.length})</summary><div className="column-picker-menu">{preview.headers.map((header, index) => <label key={index}><input type="checkbox" checked={visibleColumns.includes(index)} disabled={visibleColumns.length === 1 && visibleColumns.includes(index)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, index].sort((a, b) => a - b) : current.filter((column) => column !== index))} />{header}</label>)}</div></details>
+              <span className="filter-help">{filterMode === 'all' ? 'All conditions must match.' : 'Any one condition can match.'}</span>
             </div>
-            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterColumn(''); setFilterValue(''); setFilterOperator('contains'); setPage(0); }}>Reset view</button></div></div>
+            <div className="table-controls"><span>{sortedData.length.toLocaleString()} rows match current view</span><div className="table-control-actions"><button className="copy-view-button" type="button" onClick={copyCurrentView}>Copy view</button><button className="copy-view-button" type="button" aria-pressed={editingEnabled} onClick={() => { setEditingCell(null); setEditingEnabled((current) => !current); }}>{editingEnabled ? 'Done editing' : 'Edit data'}</button><button className="copy-view-button" type="button" onClick={undoCellEdit} aria-keyshortcuts="Control+Z Meta+Z" title="Undo edit (Ctrl+Z / Cmd+Z)" disabled={editHistory.length === 0 || editingCell !== null}>Undo edit{editHistory.length > 0 ? ` (${editHistory.length})` : ''}</button><label>Rows per page<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={12}>12</option><option value={24}>24</option><option value={50}>50</option><option value={100}>100</option><option value={250}>250</option></select></label><button type="button" onClick={() => { setSearch(''); setHideEmpty(false); setSort({ column: null, direction: 'asc' }); setFilterRules([{ id: 1, column: '', operator: 'contains', value: '' }]); setFilterMode('all'); nextFilterId.current = 2; setPage(0); }}>Reset view</button></div></div>
             {copyStatus && <p className="copy-status" role="status">{copyStatus}</p>}
 
             <div className="table-scroll">
@@ -599,28 +860,47 @@ function Workspace() {
                     {header}<span aria-hidden="true">{sort.column === index ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
                   </button>
                 </th>; })}</tr></thead>
-                <tbody>{visibleData.map((values, rowIndex) => (
-                  <tr key={page * pageSize + rowIndex}>{selectedColumns.map((columnIndex) => <td key={columnIndex}>{values[columnIndex]?.trim() || <span className="empty-cell">Empty</span>}</td>)}</tr>
-                ))}{sortedData.length === 0 && <tr><td colSpan={Math.max(1, selectedColumns.length)} className="empty-results">No rows match your filters. Try changing the search or filter.</td></tr>}</tbody>
+                <tbody>{visibleData.map((values, rowIndex) => {
+                  const sourceRowIndex = preview.data.indexOf(values);
+                  const displayedRowNumber = sourceRowIndex + 1;
+                  return <tr key={sourceRowIndex}>{selectedColumns.map((columnIndex) => {
+                    const cellValue = values[columnIndex] ?? '';
+                    const isEditing = editingCell?.rowIndex === sourceRowIndex && editingCell?.columnIndex === columnIndex;
+                    return <td key={columnIndex}>{isEditing ? <input
+                      className="cell-editor"
+                      autoFocus
+                      aria-label={`Edit ${preview.headers[columnIndex]}, row ${displayedRowNumber}`}
+                      value={editingCell.value}
+                      onChange={(event) => setEditingCell((current) => ({ ...current, value: event.target.value }))}
+                      onBlur={(event) => {
+                        if (event.currentTarget.dataset.cancelled !== 'true') commitCellEdit(sourceRowIndex, columnIndex, editingCell.value);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') event.currentTarget.blur();
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          event.currentTarget.dataset.cancelled = 'true';
+                          setEditingCell(null);
+                        }
+                      }}
+                    /> : editingEnabled ? <button
+                      className="cell-edit-value"
+                      type="button"
+                      aria-label={`Edit ${preview.headers[columnIndex]}, row ${displayedRowNumber}`}
+                      onClick={() => setEditingCell({ rowIndex: sourceRowIndex, columnIndex, value: cellValue })}
+                    >{cellValue.trim() ? cellValue : <span className="empty-cell">Empty</span>}</button>
+                      : cellValue.trim() || <span className="empty-cell">Empty</span>}</td>;
+                  })}</tr>;
+                })}{sortedData.length === 0 && <tr><td colSpan={Math.max(1, selectedColumns.length)} className="empty-results">No rows match your filters. Try changing the search or filter.</td></tr>}</tbody>
               </table>
             </div>
-            <div className="table-footnote">Showing {visibleData.length} of {sortedData.length.toLocaleString()} matching records <span>·</span> Select a column heading to sort<div className="pagination"><button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous</button><span>Page {page + 1} of {pageCount}</span><button type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next →</button></div></div>
+            <div className="table-footnote">Showing {visibleData.length} of {sortedData.length.toLocaleString()} matching records <span>·</span> Select a column heading to sort<div className="pagination"><button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous</button><label className="page-jump">Page <input type="number" min="1" max={pageCount} value={page + 1} aria-label={`Page number, from 1 to ${pageCount}`} onChange={(event) => { const requestedPage = Number(event.target.value); if (Number.isFinite(requestedPage)) setPage(Math.min(pageCount - 1, Math.max(0, requestedPage - 1))); }} /> of {pageCount}</label><button type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next →</button></div></div>
           </div>
         )}
       </section>
       <footer><span>© INSIGHTX</span><span>MADE FOR CLEARER THINKING <i>✳</i></span></footer>
     </main>
   );
-}
-
-function App() {
-  const [authMode, setAuthMode] = useState(() => new URLSearchParams(window.location.search).get('auth'));
-  useEffect(() => {
-    const syncAuthMode = () => setAuthMode(new URLSearchParams(window.location.search).get('auth'));
-    window.addEventListener('popstate', syncAuthMode);
-    return () => window.removeEventListener('popstate', syncAuthMode);
-  }, []);
-  return authMode === 'login' || authMode === 'register' ? <AuthPage mode={authMode} /> : <Workspace />;
 }
 
 export default App;

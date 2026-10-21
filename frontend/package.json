@@ -12,10 +12,16 @@
   },
   "dependencies": {
     "axios": "^1.20.0",
+    "exceljs": "4.4.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",
     "recharts": "^3.10.1"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
