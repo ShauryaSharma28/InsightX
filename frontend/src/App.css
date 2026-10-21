@@ -341,6 +341,7 @@ th, td { padding: 12px 14px; }
 .report-button:hover, .pagination button:not(:disabled):hover, .table-controls .copy-view-button:hover { transform: translateY(-1px); }
 .download-button:focus-visible, .report-button:focus-visible, .pagination button:focus-visible,
 .sample-button:focus-visible, .sample-download:focus-visible, .top-nav a:focus-visible,
+.top-nav .account-link:focus-visible,
 .column-picker summary:focus-visible, .table-controls button:focus-visible {
   outline: 2px solid #b4d27c;
   outline-offset: 3px;
@@ -370,8 +371,10 @@ footer { padding-top: 28px; letter-spacing: .15em; }
   .topbar { gap: 8px; }
   .brand { gap: 7px; font-size: 20px; }
   .brand-mark { width: 29px; height: 29px; }
-  .top-nav { display: none; }
-  .local-status { letter-spacing: .07em; }
+  .top-nav { display: flex; gap: 3px; }
+  .top-nav a[href="#workspace"], .top-nav a[href="#insights"], .top-nav a[href="#rows"] { display: none; }
+  .top-nav a, .top-nav .account-link { padding: 7px 8px; font-size: 9px; }
+  .local-status { display: none; letter-spacing: .07em; }
   .intro { min-height: 264px; }
   .intro-copy { padding-top: 26px; }
   .intro h1 { font-size: 48px; }
