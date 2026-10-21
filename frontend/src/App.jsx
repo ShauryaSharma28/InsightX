@@ -49,6 +49,18 @@ function downloadJsonFile(fileName, records) {
   URL.revokeObjectURL(url);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+}
+
+function reportValue(value) {
+  return value === null || value === undefined || value === ''
+    ? '—'
+    : typeof value === 'number' ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : value;
+}
+
 function App() {
   return <AccountProvider><WorkspaceApp /></AccountProvider>;
 }
@@ -659,6 +671,54 @@ function WorkspaceApp() {
     downloadCsvFile(`${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-column-report.csv`, content);
   }
 
+  function downloadInsightBrief() {
+    if (!preview) return;
+    const esc = escapeHtml;
+    const filterDescriptions = [];
+    if (search.trim()) filterDescriptions.push(`Search all columns for “${search.trim()}”`);
+    filterRules.forEach((rule, index) => {
+      const field = rule.column === '' ? 'all columns' : preview.headers[Number(rule.column)];
+      const operators = {
+        contains: 'contains', startsWith: 'starts with', endsWith: 'ends with', equals: 'equals',
+        notEquals: 'does not equal', greater: 'is greater than', less: 'is less than',
+        dateAfter: 'is after', dateBefore: 'is before', dateOnOrAfter: 'is on or after',
+        dateOnOrBefore: 'is on or before', empty: 'is empty', notEmpty: 'is not empty',
+      };
+      const condition = `${field} ${operators[rule.operator] ?? rule.operator}${['empty', 'notEmpty'].includes(rule.operator) ? '' : ` “${rule.value}”`}`;
+      if (rule.column !== '' || rule.value || ['empty', 'notEmpty'].includes(rule.operator)) {
+        filterDescriptions.push(`${index > 0 ? (filterMode === 'all' ? 'AND ' : 'OR ') : ''}${condition}`);
+      }
+    });
+    if (hideEmpty) filterDescriptions.push('Incomplete rows hidden');
+    const profileBasis = profileCurrentView ? 'Current filtered view' : 'Full dataset';
+    const patternMarkup = automaticInsights.length
+      ? automaticInsights.map((insight) => `<article class="signal"><span>${esc(insight.title)}</span><h3>${esc(insight.field)}</h3><p>${esc(insight.summary)}</p></article>`).join('')
+      : '<p class="empty">No strong patterns were detected in this view.</p>';
+    const profileMarkup = columnProfiles.map((column) => `<tr><td>${esc(column.header)}</td><td>${esc(column.type)}</td><td>${reportValue(column.filled)}</td><td>${reportValue(column.missing)}</td><td>${reportValue(column.completeness)}%</td><td>${reportValue(column.distinct)}</td><td>${reportValue(column.average)}</td><td>${column.commonValues.slice(0, 3).map(({ value, count }) => `${esc(value)} (${count})`).join(', ') || '—'}</td></tr>`).join('');
+    const chartMarkup = chartData.length
+      ? `<p class="subhead">${esc(chartType === 'line' ? `${preview.headers[Number(chartDateColumn)]} by ${chartDateBucket}` : chartGroupColumn === '' ? 'Top matching rows' : `Grouped by ${preview.headers[Number(chartGroupColumn)]}`)} · ${esc(chartAggregate === 'sum' ? 'Total' : 'Average')} ${esc(preview.headers[activeChartColumn])}</p><table><thead><tr><th>Group</th><th>Value</th></tr></thead><tbody>${chartData.map(({ label, value }) => `<tr><td>${esc(label)}</td><td>${reportValue(value)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="empty">No chart data is available for the current view.</p>';
+    const generated = new Intl.DateTimeFormat(undefined, { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+    const report = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Insight Brief · ${esc(preview.fileName)}</title>
+<style>
+@page{size:landscape;margin:14mm}
+*{box-sizing:border-box}body{margin:0;background:#f3f5ef;color:#26362d;font:14px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.page{width:min(calc(100% - 40px),960px);margin:38px auto;padding:48px;background:#fff;border:1px solid #e2e8dd;border-radius:18px;box-shadow:0 18px 48px #213b2b12}.brand{color:#708b48;font-size:11px;font-weight:800;letter-spacing:.18em}.eyebrow{margin:30px 0 8px;color:#81916e;font-size:10px;font-weight:750;letter-spacing:.15em;text-transform:uppercase}h1{margin:0;color:#20382b;font-family:Georgia,serif;font-size:42px;font-weight:500;letter-spacing:-.04em;line-height:1.12}h2{margin:0;color:#2a4032;font-size:19px;letter-spacing:-.02em}.meta{margin:10px 0 0;color:#748075;font-size:12px}.summary{margin:18px 0 30px;color:#647267}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:24px 0 36px}.kpi{padding:16px;border:1px solid #e7ece2;border-radius:10px;background:#fafbf8}.kpi span{display:block;color:#829080;font-size:9px;font-weight:750;letter-spacing:.1em}.kpi strong{display:block;margin-top:6px;color:#263d30;font-size:23px}.section{margin-top:32px;break-inside:avoid}.section-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:12px}.section-head small,.subhead{color:#728074;font-size:11px}.signals{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.signal{padding:15px;border:1px solid #e4eadf;border-radius:10px;background:#fbfcf9}.signal>span{color:#82956a;font-size:9px;font-weight:750;letter-spacing:.1em;text-transform:uppercase}.signal h3{margin:5px 0;color:#2b4233;font-size:14px}.signal p{margin:0;color:#657268;font-size:12px}.filters{padding:12px 14px;border-left:3px solid #9bb76b;background:#f7f9f3;color:#58675c;font-size:12px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:9px 10px;border-bottom:1px solid #e9eee5;text-align:left;vertical-align:top}th{background:#f6f8f3;color:#657367;font-size:9px;font-weight:750;letter-spacing:.06em;text-transform:uppercase}.empty{padding:16px;border:1px dashed #d6dfce;border-radius:8px;color:#778477;font-size:12px}.note{margin-top:30px;padding-top:14px;border-top:1px solid #e9eee5;color:#829083;font-size:10px}.print{position:fixed;right:24px;bottom:24px;padding:11px 16px;border:0;border-radius:8px;background:#294b36;color:white;font:600 12px system-ui;cursor:pointer}.print:hover{background:#3b6547}@media(max-width:650px){.page{width:100%;margin:0;padding:24px;border:0;border-radius:0;box-shadow:none}h1{font-size:34px}.kpis{grid-template-columns:repeat(2,1fr)}.signals{grid-template-columns:1fr}.section-head{align-items:flex-start;flex-direction:column}}@media print{body{background:#fff}.page{width:100%;margin:0;padding:0;border:0;box-shadow:none}.print{display:none}.section,.kpi,.signal{break-inside:avoid}h2{break-after:avoid}}
+</style></head><body><main class="page"><div class="brand">INSIGHTX · LOCAL ANALYSIS</div><p class="eyebrow">Insight brief</p><h1>${esc(preview.fileName)}</h1><p class="meta">Generated ${esc(generated)} · ${esc(profileBasis.toLowerCase())} profile</p><p class="summary">A concise readout of the data currently explored in InsightX. This brief contains summary metrics and aggregated values, not the source rows.</p>
+<section class="kpis"><div class="kpi"><span>ROWS IN VIEW</span><strong>${filteredData.length.toLocaleString()}</strong></div><div class="kpi"><span>DATASET ROWS</span><strong>${preview.rowCount.toLocaleString()}</strong></div><div class="kpi"><span>EMPTY CELLS</span><strong>${missingCells.toLocaleString()}</strong></div><div class="kpi"><span>DUPLICATE ROWS</span><strong>${duplicateRows.toLocaleString()}</strong></div></section>
+<section class="section"><div class="section-head"><h2>Signals in this view</h2><small>${filteredData.length.toLocaleString()} matching rows analysed</small></div><div class="signals">${patternMarkup}</div></section>
+<section class="section"><div class="section-head"><h2>Current filters</h2></div><div class="filters">${filterDescriptions.length ? filterDescriptions.map(esc).join('<br>') : 'No filters applied.'}</div></section>
+<section class="section"><div class="section-head"><h2>Chart summary</h2></div>${chartMarkup}</section>
+<section class="section"><div class="section-head"><h2>Column quality</h2><small>Profiled against ${esc(profileBasis.toLowerCase())}</small></div><table><thead><tr><th>Column</th><th>Type</th><th>Filled</th><th>Missing</th><th>Complete</th><th>Unique</th><th>Average</th><th>Frequent values</th></tr></thead><tbody>${profileMarkup}</tbody></table></section>
+<p class="note">Generated locally by InsightX. Original dataset rows are not included. Use your browser’s Print command to save this brief as a PDF.</p></main><button class="print" onclick="window.print()">Print / Save as PDF</button></body></html>`;
+    const url = URL.createObjectURL(new Blob([report], { type: 'text/html;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${preview.fileName.replace(/\.(csv|json|xlsx)$/i, '')}-insight-brief.html`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   function downloadIncompleteRows() {
     if (!preview) return;
     if (incompleteRows.length === 0) return;
@@ -820,7 +880,7 @@ function WorkspaceApp() {
             </div>
 
             <section className="automatic-insights" aria-labelledby="automatic-insights-title">
-              <div className="automatic-insights-heading"><div><span className="section-kicker">PATTERN SCAN</span><h3 id="automatic-insights-title">Signals in this view</h3></div><p>{filteredData.length.toLocaleString()} matching rows analysed</p></div>
+              <div className="automatic-insights-heading"><div><span className="section-kicker">PATTERN SCAN</span><h3 id="automatic-insights-title">Signals in this view</h3></div><div className="automatic-insights-actions"><p>{filteredData.length.toLocaleString()} matching rows analysed</p><button className="brief-button" type="button" onClick={downloadInsightBrief}>Download Insight Brief <span aria-hidden="true">↗</span></button></div></div>
               {automaticInsights.length > 0
                 ? <div className="automatic-insight-grid">{automaticInsights.map((insight) => <article className="automatic-insight-card" key={`${insight.title}-${insight.field}`}><span>{insight.title}</span><strong>{insight.field}</strong><p>{insight.summary}</p></article>)}</div>
                 : <p className="automatic-insights-empty">No strong patterns found in this view. Try widening the filters or loading more rows.</p>}
