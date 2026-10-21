@@ -679,8 +679,8 @@ function WorkspaceApp() {
         </a>
         <nav className="top-nav" aria-label="Main navigation">
           <a href="#workspace">Workspace</a>
-          <a href="#insights">Insights</a>
-          <a href="#rows">Rows</a>
+          <a href={preview ? '#insights' : '#workspace'}>Insights</a>
+          <a href={preview ? '#rows' : '#workspace'}>Rows</a>
         </nav>
         <div className="topbar-actions">
           <div className="local-status"><span /> LOCAL BY DEFAULT</div>
