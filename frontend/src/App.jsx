@@ -5,6 +5,8 @@ import { countDuplicateRows, filterRows, getColumnProfiles, getImportErrorMessag
 import './App.css';
 import AuthPage from './AuthPage.jsx';
 
+const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+
 function csvCell(value) {
   const text = value ?? '';
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -69,6 +71,9 @@ function Workspace() {
   const [replacementFind, setReplacementFind] = useState('');
   const [replacementValue, setReplacementValue] = useState('');
   const [replacementEnabled, setReplacementEnabled] = useState(false);
+  const [savedDatasets, setSavedDatasets] = useState([]);
+  const [saveStatus, setSaveStatus] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   function setDataset(fileName, rows, fileSize) {
     const { headers, data } = normalizeRows(rows);
@@ -94,6 +99,90 @@ function Workspace() {
     setTrimWhitespace(false);
     setShowIncompleteColumns(false);
     setProfileCurrentView(false);
+    setSaveStatus('');
+  }
+
+  useEffect(() => {
+    const draft = sessionStorage.getItem('insightx.pending-dataset');
+    if (draft) {
+      try {
+        const pending = JSON.parse(draft);
+        setDataset(pending.fileName, [pending.headers, ...pending.data], pending.fileSize);
+      } catch {
+        // Ignore an invalid temporary draft and keep the workspace local and usable.
+      }
+      sessionStorage.removeItem('insightx.pending-dataset');
+    }
+
+    const access = localStorage.getItem('insightx.access');
+    if (!access) return;
+    fetch(`${apiUrl}/saved-datasets/`, { headers: { Authorization: `Bearer ${access}` } })
+      .then((response) => response.ok ? response.json() : [])
+      .then((items) => setSavedDatasets(items))
+      .catch(() => setSavedDatasets([]));
+  }, []);
+
+  function openAuthToSave() {
+    if (preview) sessionStorage.setItem('insightx.pending-dataset', JSON.stringify({
+      fileName: preview.fileName,
+      fileSize: preview.fileSize,
+      headers: preview.headers,
+      data: downloadableRows,
+    }));
+    window.location.assign('?auth=login');
+  }
+
+  async function saveDataset() {
+    const access = localStorage.getItem('insightx.access');
+    if (!access || !preview) return;
+    setIsSaving(true);
+    setSaveStatus('');
+    try {
+      const response = await fetch(`${apiUrl}/saved-datasets/`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_name: preview.fileName, file_size: preview.fileSize, headers: preview.headers, data: downloadableRows }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || 'Could not save this dataset.');
+      setSavedDatasets((current) => [result, ...current]);
+      setSaveStatus('Saved to your account.');
+    } catch (cause) {
+      setSaveStatus(cause.message || 'Could not save this dataset.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function loadSavedDataset(datasetId) {
+    const access = localStorage.getItem('insightx.access');
+    if (!access) return;
+    setSaveStatus('Loading saved dataset…');
+    try {
+      const response = await fetch(`${apiUrl}/saved-datasets/${datasetId}/`, { headers: { Authorization: `Bearer ${access}` } });
+      if (!response.ok) throw new Error('Could not load this saved dataset.');
+      const item = await response.json();
+      setDataset(item.file_name, [item.headers, ...item.data], item.file_size);
+      setSaveStatus('Loaded from your account.');
+    } catch (cause) {
+      setSaveStatus(cause.message || 'Could not load this saved dataset.');
+    }
+  }
+
+  async function deleteSavedDataset(datasetId) {
+    const access = localStorage.getItem('insightx.access');
+    if (!access) return;
+    try {
+      const response = await fetch(`${apiUrl}/saved-datasets/${datasetId}/`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${access}` },
+      });
+      if (!response.ok) throw new Error('Could not delete this saved dataset.');
+      setSavedDatasets((current) => current.filter((item) => item.id !== datasetId));
+      setSaveStatus('Saved dataset deleted from your account.');
+    } catch (cause) {
+      setSaveStatus(cause.message || 'Could not delete this saved dataset.');
+    }
   }
 
   function loadSampleDataset() {
@@ -378,7 +467,7 @@ function Workspace() {
           <a href="#rows">Rows</a>
           {localStorage.getItem('insightx.access') ? <button className="account-link" type="button" onClick={() => { localStorage.removeItem('insightx.access'); localStorage.removeItem('insightx.refresh'); localStorage.removeItem('insightx.user'); window.location.reload(); }}>Sign out</button> : <><a href="?auth=login">Sign in</a><a className="auth-link" href="?auth=register">Create account</a></>}
         </nav>
-        <div className="local-status"><span /> PRIVATE WORKSPACE</div>
+        <div className="local-status"><span /> LOCAL BY DEFAULT</div>
       </header>
 
       <section className="intro" id="top">
@@ -412,17 +501,19 @@ function Workspace() {
           <span className="browse-button">Choose a file <span aria-hidden="true">↗</span></span>
           <input id="dataset-file" type="file" accept=".csv,.json,text/csv,application/json" onChange={handleFileChange} />
         </label>
-        <div className="privacy-note"><span aria-hidden="true">◈</span> Your data stays on this device. Nothing is uploaded. CSV and JSON files are supported.</div>
+        <div className="privacy-note"><span aria-hidden="true">◈</span> Your files stay on this device unless you choose to save a dataset to your account.</div>
         <div className="sample-actions"><button className="sample-button" type="button" onClick={loadSampleDataset}>Explore the 62-row sample <span>↗</span></button><button className="sample-download" type="button" onClick={downloadSampleCsv}>Download sample CSV ↓</button></div>
 
         {isLoading && <p className="import-status" role="status">Reading your file…</p>}
         {error && <p className="error-message" role="alert">{error}</p>}
+        {savedDatasets.length > 0 && <div className="saved-datasets"><strong>Your saved datasets</strong>{savedDatasets.map((item) => <div className="saved-dataset-actions" key={item.id}><button type="button" onClick={() => loadSavedDataset(item.id)}>{item.file_name}<span>Load</span></button><button type="button" className="saved-dataset-delete" onClick={() => deleteSavedDataset(item.id)} aria-label={`Delete ${item.file_name}`}>Delete</button></div>)}</div>}
 
         {preview && (
           <div className="dataset-area" id="insights" aria-live="polite">
             <div className="dataset-title-row">
               <div className="dataset-file-icon" aria-hidden="true">▤</div>
               <div className="dataset-name"><h3>{preview.fileName}</h3><p>Dataset overview <span>·</span> {preview.rowCount.toLocaleString()} records <span>·</span> {formatFileSize(preview.fileSize)}</p></div>
+              {localStorage.getItem('insightx.access') ? <button className="report-button save-account-button" type="button" onClick={saveDataset} disabled={isSaving}>{isSaving ? 'Saving…' : 'Save to account'}</button> : <button className="report-button save-account-button" type="button" onClick={openAuthToSave}>Sign in to save</button>}
               <button className="download-button export-json-button" type="button" onClick={downloadJson} disabled={downloadableRows.length === 0}>
                 Export {removeDuplicates || replacementEnabled ? 'cleaned JSON' : 'JSON'} ({downloadableRows.length.toLocaleString()})
               </button>
@@ -430,6 +521,7 @@ function Workspace() {
                 <span aria-hidden="true">↓</span> Export {removeDuplicates || replacementEnabled ? 'cleaned CSV' : 'CSV'} ({downloadableRows.length.toLocaleString()})
               </button>
             </div>
+            {saveStatus && <p className="save-status" role="status">{saveStatus}</p>}
 
             <div className="analysis-grid">
               <section className="analysis-card chart-card">

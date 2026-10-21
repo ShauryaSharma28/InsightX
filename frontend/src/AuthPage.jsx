@@ -47,7 +47,7 @@ export default function AuthPage({ mode }) {
       <section className="auth-card" aria-labelledby="auth-title">
         <span className="auth-kicker">YOUR DATA, IN A NEW LIGHT</span>
         <h1 id="auth-title">{registering ? 'Create your account' : 'Welcome back'}</h1>
-        <p>{registering ? 'Save your place and make space for clearer thinking.' : 'Sign in to continue to your InsightX workspace.'}</p>
+        <p>{registering ? 'Create an account only if you want to save datasets online. You can use InsightX locally without one.' : 'Sign in to save datasets to your account. Your local workspace does not require an account.'}</p>
         <form onSubmit={submit}>
           <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label>Password<input type="password" autoComplete={registering ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={registering ? 8 : undefined} required /></label>

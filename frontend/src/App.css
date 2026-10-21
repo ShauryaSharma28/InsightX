@@ -352,6 +352,17 @@ th, td { padding: 12px 14px; }
 .sample-button, .sample-download, .table-controls button { min-height: 30px; }
 .empty-results, .profile-empty { border: 1px dashed #40513f; border-radius: 8px; background: #111814; }
 .upload-control:focus-visible { outline: 2px solid #b4d27c; outline-offset: 3px; }
+.save-account-button { min-height: 36px; background: #263626; border-color: #718d56; color: #d9e9bc; }
+.save-account-button:hover { background: #33472f; border-color: #9fbe6c; }
+.save-status { margin: 10px 0 0; color: #b4d27c; font-size: 10px; }
+.saved-datasets { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; }
+.saved-datasets > strong { margin-right: 4px; color: #a5b1a2; font-size: 9px; }
+.saved-dataset-actions { display: flex; align-items: center; gap: 4px; }
+.saved-datasets button { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 6px 8px; overflow: hidden; border: 1px solid #35443a; border-radius: 6px; background: #18221c; color: #d0dbce; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.saved-datasets button span { color: #b4d27c; }
+.saved-datasets button:hover { border-color: #718d56; background: #202c22; }
+.saved-datasets button.saved-dataset-delete { border-color: #493a35; color: #e6aaa0; }
+.saved-datasets button.saved-dataset-delete:hover { border-color: #85574c; background: #2c211e; }
 .pagination { margin-top: 12px; }
 footer { padding-top: 28px; letter-spacing: .15em; }
 .workspace, .analysis-card, .profile-card, .insight-card { scroll-margin-top: 24px; }
