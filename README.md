@@ -22,11 +22,14 @@ InsightX is a browser based workspace for exploring and cleaning CSV and JSON da
 - Compare numeric measures across the matching rows and categories using totals or averages.
 - Export the current chart as CSV data or a PNG image.
 - Inspect frequent repeated values in column profiles, and download a report with types, completeness, distinct counts, numeric ranges, averages, and medians.
-- Create an account or sign in with the Django API; successful authentication returns JWT access and refresh tokens.
+- Use the workspace without an account; files stay in the browser unless the user explicitly saves a dataset to an account.
+- Save chosen datasets to an account and load them later from the private saved dataset list.
 
 ## Accounts
 
-Start the backend before using the account forms. The API provides `POST /api/auth/register/` and `POST /api/auth/login/`; both accept an email and password. Registration uses Django's configured password validators. The frontend stores the returned tokens in browser storage for the current site.
+Accounts are optional. Upload, filter, clean, and export data without signing in; those actions stay in the browser. Choose **Save to account** to upload a snapshot of the current export rows to your account. Sign-in is only needed for saving and loading account datasets. Each account can only list, load, or delete its own saved datasets. Registration uses Django's configured password validators. The frontend stores JWT tokens in browser storage for the current site.
+
+The API provides `POST /api/auth/register/`, `POST /api/auth/login/`, and authenticated `/api/saved-datasets/` endpoints. Apply the Django migrations before starting the backend so the saved dataset table is created.
 
 For a frontend pointed at a deployed backend, set `VITE_API_URL` to the API base URL (for example, `https://api.example.com/api`) in the frontend build environment. The local default in `frontend/.env.example` targets `http://127.0.0.1:8000/api`.
 
